@@ -1,0 +1,6 @@
+[submodule "deps/ckb-witness-args-handwritten-reader"]
+	path = deps/ckb-witness-args-handwritten-reader
+	url = https://github.com/xxuejie/ckb-witness-args-handwritten-reader
+[submodule "deps/ckb-c-stdlib"]
+	path = deps/ckb-c-stdlib
+	url = https://github.com/nervosnetwork/ckb-c-stdlib
