@@ -240,19 +240,26 @@ impl Merge for Blake2bHash {
     }
 }
 
-fn hash_upgrade_data(old_contract: &Bytes, new_contract: &Bytes, new_cell: &CellOutput) -> Byte32 {
+fn hash_upgrade_data(old_cell: &CellMeta, new_cell: &CellMeta) -> Byte32 {
     let mut hasher = new_blake2b();
     hasher.update(&[1u8]);
-    hasher.update(&blake2b_256(old_contract)[..]);
-    hasher.update(&blake2b_256(new_contract)[..]);
-    hasher.update(new_cell.as_slice());
+    hasher.update(&blake2b_256(old_cell.mem_cell_data.as_ref().unwrap())[..]);
+    hasher.update(&blake2b_256(new_cell.mem_cell_data.as_ref().unwrap())[..]);
+    hasher.update(new_cell.cell_output.as_slice());
     let mut hash = [0u8; 32];
     hasher.finalize(&mut hash[..]);
     Byte32::new(hash)
 }
 
-fn build_merkle_root_n_proof(all_leaves: &[Byte32], selected: u32) -> (Byte32, Bytes) {
-    let tree: MerkleTree<Byte32, Blake2bHash> = CBMT::build_merkle_tree(all_leaves);
+fn build_merkle_root_n_proof(
+    all_leaves: &[(&CellMeta, &CellMeta)],
+    selected: u32,
+) -> (Byte32, Bytes) {
+    let hashed_leaves: Vec<Byte32> = all_leaves
+        .iter()
+        .map(|(old_cell, new_cell)| hash_upgrade_data(old_cell, new_cell))
+        .collect();
+    let tree: MerkleTree<Byte32, Blake2bHash> = CBMT::build_merkle_tree(&hashed_leaves);
     let proof = tree.build_proof(&[selected]).expect("build merkle proof");
 
     let mut data = vec![];
@@ -316,13 +323,8 @@ fn test_single_zero_lock_upgrade() {
     let new_contract = vec![2u8; 100].into();
     let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
 
-    let upgrade_hash = hash_upgrade_data(
-        input_cell_meta.mem_cell_data.as_ref().unwrap(),
-        output_cell_meta.mem_cell_data.as_ref().unwrap(),
-        &output_cell_meta.cell_output,
-    );
-
-    let (root, proof_witness) = build_merkle_root_n_proof(&[upgrade_hash], 0);
+    let (root, proof_witness) =
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
     let header_dep = header(&mut dummy_loader, &root);
 
     let builder = TransactionBuilder::default()
