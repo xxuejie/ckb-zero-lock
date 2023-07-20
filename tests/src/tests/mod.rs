@@ -29,7 +29,7 @@ fn test_single_zero_lock_upgrade() {
         .header_dep(header_dep)
         .witness(proof_witness.pack());
 
-    let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta]);
+    let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta]).0;
 
     let verify_result = verifier.verify(u64::MAX);
     verify_result.expect("pass verification");
@@ -53,7 +53,7 @@ fn test_single_zero_lock_no_type_script_upgrade() {
         .header_dep(header_dep)
         .witness(proof_witness.pack());
 
-    let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta]);
+    let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta]).0;
 
     let verify_result = verifier.verify(u64::MAX);
     verify_result.expect("pass verification");
@@ -88,7 +88,8 @@ fn test_zero_lock_with_other_cells_upgrade() {
         dummy_loader,
         builder,
         vec![input_cell_meta, input_cell2, input_cell3],
-    );
+    )
+    .0;
 
     let verify_result = verifier.verify(u64::MAX);
     verify_result.expect("pass verification");
@@ -118,7 +119,8 @@ fn test_more_than_one_input_zero_lock_fails_verification() {
         dummy_loader,
         builder,
         vec![input_cell_meta.clone(), input_cell_meta2],
-    );
+    )
+    .0;
 
     let verify_result = verifier.verify(u64::MAX);
     assert_error_eq!(
@@ -150,7 +152,7 @@ fn test_more_than_one_output_zero_lock_fails_verification() {
         .header_dep(header_dep)
         .witness(proof_witness.pack());
 
-    let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]);
+    let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]).0;
 
     let verify_result = verifier.verify(u64::MAX);
     assert_error_eq!(
@@ -189,7 +191,8 @@ fn test_input_zero_lock_at_other_indices_fails_verification() {
         dummy_loader,
         builder,
         vec![input_cell2, input_cell_meta.clone(), input_cell3],
-    );
+    )
+    .0;
 
     let verify_result = verifier.verify(u64::MAX);
     assert_error_eq!(
@@ -228,7 +231,8 @@ fn test_output_zero_lock_at_other_indices_fails_verification() {
         dummy_loader,
         builder,
         vec![input_cell_meta.clone(), input_cell2, input_cell3],
-    );
+    )
+    .0;
 
     let verify_result = verifier.verify(u64::MAX);
     assert_error_eq!(
@@ -256,7 +260,7 @@ fn test_missing_header_fails_verification() {
         .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
         .witness(proof_witness.pack());
 
-    let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]);
+    let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]).0;
 
     let verify_result = verifier.verify(u64::MAX);
     assert_error_eq!(
@@ -294,7 +298,7 @@ proptest! {
             .header_dep(header_dep)
             .witness(proof_witness.pack());
 
-        let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta]);
+        let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta]).0;
 
         let verify_result = verifier.verify(u64::MAX);
         verify_result.expect("pass verification");
@@ -334,7 +338,7 @@ proptest! {
             .header_dep(header_dep)
             .witness(proof_witness.pack());
 
-        let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]);
+        let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]).0;
 
         let verify_result = verifier.verify(u64::MAX);
         assert_error_eq!(
@@ -383,7 +387,7 @@ proptest! {
             .header_dep(header_dep)
             .witness(proof_witness.pack());
 
-        let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]);
+        let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]).0;
 
         let verify_result = verifier.verify(u64::MAX);
         assert!(format!("{}", verify_result.unwrap_err()).contains("Script(TransactionScriptError { source: Inputs[0].Lock, cause: ValidationFailure"));

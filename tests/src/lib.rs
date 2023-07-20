@@ -159,7 +159,11 @@ pub fn complete_tx(
     mut dummy: DummyDataLoader,
     builder: TransactionBuilder,
     input_cells: Vec<CellMeta>,
-) -> TransactionScriptsVerifier<DummyDataLoader> {
+) -> (
+    TransactionScriptsVerifier<DummyDataLoader>,
+    Arc<ResolvedTransaction>,
+    DummyDataLoader,
+) {
     let rtx: Arc<ResolvedTransaction> = {
         let zero_lock_cell_meta = script_cell(&mut dummy, &ZERO_LOCK_BIN);
         let always_success_cell_meta = script_cell(&mut dummy, &ALWAYS_SUCCESS_BIN);
@@ -232,7 +236,8 @@ pub fn complete_tx(
         }
     }
 
-    let verifier = TransactionScriptsVerifier::new(rtx, dummy, consensus, tx_verify_env);
+    let verifier =
+        TransactionScriptsVerifier::new(rtx.clone(), dummy.clone(), consensus, tx_verify_env);
     // Uncomment to debug tests:
     // verifier.set_debug_printer(move |hash: &Byte32, message: &str| {
     //     let prefix = match groups.get(hash) {
@@ -241,7 +246,7 @@ pub fn complete_tx(
     //     };
     //     eprintln!("{} DEBUG OUTPUT: {}", prefix, message);
     // });
-    verifier
+    (verifier, rtx, dummy)
 }
 
 #[derive(Debug)]
