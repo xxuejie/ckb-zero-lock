@@ -392,4 +392,49 @@ proptest! {
         let verify_result = verifier.verify(u64::MAX);
         assert!(format!("{}", verify_result.unwrap_err()).contains("Script(TransactionScriptError { source: Inputs[0].Lock, cause: ValidationFailure"));
     }
+
+    #[test]
+    fn test_single_zero_lock_multiple_merkle_tree_entries_truncate_proof_fails_verification(
+        entries in 1..30u32,
+        seed: u64,
+        truncated_bytes: usize,
+    ) {
+        let mut dummy_loader = DummyDataLoader::default();
+        let type_id = random_type_id_script();
+        let old_contract = vec![1u8; 100].into();
+        let input_cell_meta = zero_lock_cell(&mut dummy_loader, &old_contract, Some(type_id.clone()));
+        let new_contract = vec![2u8; 100].into();
+        let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
+
+        let mut rng = StdRng::seed_from_u64(seed);
+        let (root, proof_witness) = bury_in_merkle_tree(
+            &input_cell_meta,
+            &output_cell_meta,
+            entries,
+            &mut rng,
+        );
+
+        let proof_witness = {
+            let mut lock = WitnessArgs::new_unchecked(proof_witness)
+                .as_reader().lock().to_opt().unwrap().as_slice().to_vec();
+            let truncated_bytes = truncated_bytes % (lock.len() - 1) + 1;
+            lock.truncate(truncated_bytes);
+
+            WitnessArgs::new_builder().lock(Some(Bytes::from(lock)).pack())
+                .build().as_bytes()
+        };
+
+        let header_dep = header(&mut dummy_loader, &root);
+
+        let builder = TransactionBuilder::default()
+            .output(output_cell_meta.cell_output.clone())
+            .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
+            .header_dep(header_dep)
+            .witness(proof_witness.pack());
+
+        let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]).0;
+
+        let verify_result = verifier.verify(u64::MAX);
+        assert!(format!("{}", verify_result.unwrap_err()).contains("Script(TransactionScriptError { source: Inputs[0].Lock, cause: ValidationFailure"));
+    }
 }
