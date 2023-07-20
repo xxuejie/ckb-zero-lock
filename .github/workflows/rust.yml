@@ -20,7 +20,7 @@ jobs:
       with:
         submodules: true
     - name: Install custom Rust toolchain
-      run: curl -LO https://raw.githubusercontent.com/xxuejie/ckb-contract-toolchains/c4b3a52e2f47fcdeb9f7b663f193fec506f7e158/install.sh && bash install.sh 20230710-1 && rm install.sh
+      run: mkdir -p tmp && cd tmp && curl https://raw.githubusercontent.com/xxuejie/ckb-contract-toolchains/c4b3a52e2f47fcdeb9f7b663f193fec506f7e158/install.sh | bash -s -- 20230710-1 && cd .. && rm -rf tmp
     - name: Build
       run: cargo build --verbose --target=riscv64imac_zba_zbb_zbc_zbs-unknown-ckb-elf
     - name: Run tests
