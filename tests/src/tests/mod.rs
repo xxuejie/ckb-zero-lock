@@ -5,6 +5,8 @@ use ckb_types::{bytes::Bytes, core::TransactionBuilder, packed::WitnessArgs, pre
 use proptest::prelude::*;
 use rand::{rngs::StdRng, SeedableRng};
 
+const MAX_CYCLES: u64 = 60_000_000;
+
 #[test]
 fn test_zero_lock_exists() {
     assert!(ZERO_LOCK_BIN.len() > 0);
@@ -31,7 +33,7 @@ fn test_single_zero_lock_upgrade() {
 
     let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta]).0;
 
-    let verify_result = verifier.verify(u64::MAX);
+    let verify_result = verifier.verify(MAX_CYCLES);
     verify_result.expect("pass verification");
 }
 
@@ -55,7 +57,7 @@ fn test_single_zero_lock_no_type_script_upgrade() {
 
     let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta]).0;
 
-    let verify_result = verifier.verify(u64::MAX);
+    let verify_result = verifier.verify(MAX_CYCLES);
     verify_result.expect("pass verification");
 }
 
@@ -91,7 +93,7 @@ fn test_zero_lock_with_other_cells_upgrade() {
     )
     .0;
 
-    let verify_result = verifier.verify(u64::MAX);
+    let verify_result = verifier.verify(MAX_CYCLES);
     verify_result.expect("pass verification");
 }
 
@@ -122,7 +124,7 @@ fn test_more_than_one_input_zero_lock_fails_verification() {
     )
     .0;
 
-    let verify_result = verifier.verify(u64::MAX);
+    let verify_result = verifier.verify(MAX_CYCLES);
     assert_error_eq!(
         verify_result.unwrap_err(),
         ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
@@ -154,7 +156,7 @@ fn test_more_than_one_output_zero_lock_fails_verification() {
 
     let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]).0;
 
-    let verify_result = verifier.verify(u64::MAX);
+    let verify_result = verifier.verify(MAX_CYCLES);
     assert_error_eq!(
         verify_result.unwrap_err(),
         ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
@@ -194,7 +196,7 @@ fn test_input_zero_lock_at_other_indices_fails_verification() {
     )
     .0;
 
-    let verify_result = verifier.verify(u64::MAX);
+    let verify_result = verifier.verify(MAX_CYCLES);
     assert_error_eq!(
         verify_result.unwrap_err(),
         ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
@@ -234,7 +236,7 @@ fn test_output_zero_lock_at_other_indices_fails_verification() {
     )
     .0;
 
-    let verify_result = verifier.verify(u64::MAX);
+    let verify_result = verifier.verify(MAX_CYCLES);
     assert_error_eq!(
         verify_result.unwrap_err(),
         ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
@@ -262,7 +264,7 @@ fn test_missing_header_fails_verification() {
 
     let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]).0;
 
-    let verify_result = verifier.verify(u64::MAX);
+    let verify_result = verifier.verify(MAX_CYCLES);
     assert_error_eq!(
         verify_result.unwrap_err(),
         ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
@@ -300,7 +302,7 @@ proptest! {
 
         let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta]).0;
 
-        let verify_result = verifier.verify(u64::MAX);
+        let verify_result = verifier.verify(MAX_CYCLES);
         verify_result.expect("pass verification");
     }
 
@@ -340,7 +342,7 @@ proptest! {
 
         let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]).0;
 
-        let verify_result = verifier.verify(u64::MAX);
+        let verify_result = verifier.verify(MAX_CYCLES);
         assert_error_eq!(
             verify_result.unwrap_err(),
             ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
@@ -389,7 +391,7 @@ proptest! {
 
         let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]).0;
 
-        let verify_result = verifier.verify(u64::MAX);
+        let verify_result = verifier.verify(MAX_CYCLES);
         assert!(format!("{}", verify_result.unwrap_err()).contains("Script(TransactionScriptError { source: Inputs[0].Lock, cause: ValidationFailure"));
     }
 
@@ -434,7 +436,7 @@ proptest! {
 
         let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]).0;
 
-        let verify_result = verifier.verify(u64::MAX);
+        let verify_result = verifier.verify(MAX_CYCLES);
         assert!(format!("{}", verify_result.unwrap_err()).contains("Script(TransactionScriptError { source: Inputs[0].Lock, cause: ValidationFailure"));
     }
 }
