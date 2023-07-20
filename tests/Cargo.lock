@@ -247,6 +247,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ckb-mock-tx-types"
+version = "0.111.0-rc8"
+source = "git+https://github.com/nervosnetwork/ckb-standalone-debugger?rev=b7ca5cc#b7ca5cc72ed0586236785c34562c11ad517c162e"
+dependencies = [
+ "ckb-jsonrpc-types",
+ "ckb-traits",
+ "ckb-types",
+ "serde",
+]
+
+[[package]]
 name = "ckb-occupied-capacity"
 version = "0.111.0-rc8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -424,6 +435,7 @@ dependencies = [
  "ckb-chain-spec",
  "ckb-error",
  "ckb-hash",
+ "ckb-mock-tx-types",
  "ckb-script",
  "ckb-traits",
  "ckb-types",
@@ -431,6 +443,7 @@ dependencies = [
  "merkle-cbt",
  "proptest",
  "rand 0.8.5",
+ "serde_json",
 ]
 
 [[package]]

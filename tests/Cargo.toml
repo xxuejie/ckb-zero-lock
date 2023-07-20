@@ -16,4 +16,8 @@ ckb-types = "0.111.0-rc8"
 lazy_static = "1.4.0"
 ckb-always-success-script = "0.0.1"
 rand = "0.8.5"
+
+[dev-dependencies]
 proptest = "1.0.0"
+ckb-mock-tx-types = { git = "https://github.com/nervosnetwork/ckb-standalone-debugger", rev = "b7ca5cc" }
+serde_json = "1.0.103"
