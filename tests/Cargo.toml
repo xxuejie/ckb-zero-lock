@@ -1,0 +1,17 @@
+[package]
+name = "ckb-zero-lock-tests"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+merkle-cbt = { version = "0.3.1", default-features = false }
+ckb-chain-spec = "0.111.0-rc8"
+ckb-hash = "0.111.0-rc8"
+ckb-script = { version = "0.111.0-rc8", features = ["logging"] }
+ckb-traits = "0.111.0-rc8"
+ckb-types = "0.111.0-rc8"
+lazy_static = "1.4.0"
+ckb-always-success-script = "0.0.1"
+rand = "0.8.5"

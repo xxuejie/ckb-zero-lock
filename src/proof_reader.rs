@@ -55,7 +55,6 @@ enum ReadState {
     IndicesLength,
     Indices,
     LemmasLength,
-    LemmasEntryLength,
     Lemmas,
     Completed,
 }
@@ -69,7 +68,6 @@ struct StateVisitor {
 
     indices: Vec<u32>,
     lemmas: Vec<Data>,
-    entry_length: usize,
 }
 
 impl Default for StateVisitor {
@@ -80,7 +78,6 @@ impl Default for StateVisitor {
             buffer: FixedBuffer::default(),
             indices: Vec::new(),
             lemmas: Vec::new(),
-            entry_length: 0,
         }
     }
 }
@@ -118,41 +115,22 @@ impl StateVisitor {
                     }
                 }
                 ReadState::LemmasLength => {
-                    if data.len() > 4 {
+                    if data.len() >= 4 {
                         let mut t = [0u8; 4];
                         t.copy_from_slice(&data[0..4]);
                         self.buffer.consume(4);
                         self.total = u32::from_le_bytes(t) as usize;
-                        self.state = ReadState::LemmasEntryLength;
-                        changed = true;
-                    }
-                }
-                ReadState::LemmasEntryLength => {
-                    if self.lemmas.len() >= self.total {
-                        self.state = ReadState::Completed;
-                        changed = true;
-                    } else if data.len() > 4 {
-                        let mut t = [0u8; 4];
-                        t.copy_from_slice(&data[0..4]);
-                        self.buffer.consume(4);
-                        self.entry_length = u32::from_le_bytes(t) as usize;
-                        if self.entry_length >= FIXED_BUF_SIZE {
-                            debug!(
-                                "Entry length {} is bigger than the size of fixed buffer!",
-                                self.entry_length
-                            );
-                            return ERROR_CODE;
-                        }
                         self.state = ReadState::Lemmas;
                         changed = true;
                     }
                 }
                 ReadState::Lemmas => {
-                    if data.len() >= self.entry_length {
-                        self.lemmas
-                            .push(Data::from_slice(&data[0..self.entry_length]));
-                        self.buffer.consume(self.entry_length);
-                        self.state = ReadState::LemmasEntryLength;
+                    if self.lemmas.len() >= self.total {
+                        self.state = ReadState::Completed;
+                        changed = true;
+                    } else if data.len() >= 32 {
+                        self.lemmas.push(Data::from_slice(&data[0..32]));
+                        self.buffer.consume(32);
                         changed = true;
                     }
                 }

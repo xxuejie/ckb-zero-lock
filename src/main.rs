@@ -9,22 +9,28 @@ use ckb_std::{ckb_constants::Source, debug, default_alloc, error::SysError, high
 ckb_std::entry!(program_entry);
 default_alloc!();
 
-use alloc::{vec, vec::Vec};
 use blake2b_ref::Blake2bBuilder;
 use merkle_cbt::merkle_tree::Merge;
 
 mod proof_reader;
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub struct Data(Vec<u8>);
+#[derive(Debug, Default, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
+pub struct Data([u8; 32]);
 
 impl Data {
-    pub fn from_slice(s: &[u8]) -> Self {
-        Data(s.to_vec())
+    fn from_slice(data: &[u8]) -> Self {
+        assert_eq!(data.len(), 32);
+        let mut d = [0u8; 32];
+        d.copy_from_slice(data);
+        Self(d)
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
+    fn new(data: [u8; 32]) -> Self {
+        Self(data)
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        &self.0[..]
     }
 }
 
@@ -42,7 +48,7 @@ impl Merge for Blake2bHash {
         hasher.update(&rhs.as_bytes());
         let mut hash = [0u8; 32];
         hasher.finalize(&mut hash[..]);
-        Data::from_slice(&hash)
+        Data::new(hash)
     }
 }
 
@@ -79,51 +85,59 @@ pub fn run() -> Result<(), SysError> {
 
     // Find merkle root from extension field at offset 128 in the first header
     let mut merkle_root = [0u8; 32];
-    if syscalls::load_extension(&mut merkle_root, 128, 0, Source::HeaderDep)? != 32 {
-        debug!("Error loading merkle root from extension!");
-        return Err(SysError::Unknown(5));
+    match syscalls::load_extension(&mut merkle_root, 128, 0, Source::HeaderDep) {
+        Ok(n) => {
+            if n != 32 {
+                debug!("Extension does not have enough data for merkle root!");
+                return Err(SysError::Unknown(5));
+            }
+        }
+        Err(SysError::LengthNotEnough(_)) => (),
+        e => {
+            debug!("Error loading merkle root from extension: {:?}", e);
+            return Err(SysError::Unknown(6));
+        }
     }
-    let merkle_root = Data::from_slice(&merkle_root);
+    let merkle_root = Data::new(merkle_root);
 
     // Load merkle proof from lock field in witness from the first input cell
     let merkle_proof = proof_reader::parse_merkle_proof::<Blake2bHash>(0, Source::Input)
         .expect("parsing merkle proof failure!");
-    debug!(
-        "Merkle proof indices len: {}, lemmas len: {}",
-        merkle_proof.indices().len(),
-        merkle_proof.lemmas().len()
-    );
 
     // Generate the leaf we need:
     //
     // 01 + (the first input cell’s data hash) + (the first output cell’s data hash) +
     // (the first output cell’s CellOutput structure)
-    let mut leaf = vec![0x01];
-    leaf.extend(high_level::load_cell_data_hash(0, Source::Input)?);
-    leaf.extend(high_level::load_cell_data_hash(0, Source::Output)?);
+    let mut hasher = Blake2bBuilder::new(32)
+        .personal(b"ckb-default-hash")
+        .build();
+    hasher.update(&[1u8]);
+    hasher.update(&high_level::load_cell_data_hash(0, Source::Input)?);
+    hasher.update(&high_level::load_cell_data_hash(0, Source::Output)?);
     let mut loaded = 0;
     let mut buf = [0u8; 4096];
     loop {
         match syscalls::load_cell(&mut buf, loaded, 0, Source::Output) {
             Ok(actual_loaded_len) => {
-                leaf.extend(&buf[..actual_loaded_len]);
+                hasher.update(&buf[..actual_loaded_len]);
                 break;
             }
             Err(SysError::LengthNotEnough(_total_length)) => {
-                leaf.extend(&buf);
+                hasher.update(&buf);
                 loaded += 4096;
             }
             Err(e) => {
                 debug!("Error loading first output cell: {:?}", e);
-                return Err(SysError::Unknown(6));
+                return Err(SysError::Unknown(7));
             }
         }
     }
-
-    let leaves = vec![Data::from_slice(&leaf)];
+    let mut leaf = [0u8; 32];
+    hasher.finalize(&mut leaf[..]);
+    let leaf = Data::new(leaf);
 
     // Actual merkle proof verification
-    let actual_root = merkle_proof.root(&leaves).expect("no root");
+    let actual_root = merkle_proof.root(&[leaf]).expect("no root");
     if actual_root != merkle_root {
         debug!(
             "Merkle proof failure! Actual root: {:?}, expected root: {:?}",
