@@ -1,6 +1,7 @@
 use ckb_chain_spec::consensus::{ConsensusBuilder, TYPE_ID_CODE_HASH};
+use ckb_error::assert_error_eq;
 use ckb_hash::{blake2b_256, new_blake2b};
-use ckb_script::{TransactionScriptsVerifier, TxVerifyEnv};
+use ckb_script::{ScriptError, TransactionScriptsVerifier, TxVerifyEnv};
 use ckb_traits::{CellDataProvider, ExtensionProvider, HeaderProvider};
 use ckb_types::{
     bytes::Bytes,
@@ -14,7 +15,8 @@ use ckb_types::{
 };
 use lazy_static::lazy_static;
 use merkle_cbt::{merkle_tree::Merge, MerkleTree, CBMT};
-use rand::{thread_rng, Rng};
+use proptest::prelude::*;
+use rand::{rngs::StdRng, thread_rng, Rng, SeedableRng};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -108,6 +110,27 @@ fn script_cell(dummy: &mut DummyDataLoader, script_data: &Bytes) -> CellMeta {
         )
         .build();
     let cell_meta = CellMetaBuilder::from_cell_output(cell, script_data.clone())
+        .out_point(out_point)
+        .build();
+    insert_cell(dummy, &cell_meta);
+    cell_meta
+}
+
+fn always_success_cell(dummy: &mut DummyDataLoader, capacity_bytes: usize) -> CellMeta {
+    let out_point = random_out_point();
+    let lock = Script::new_builder()
+        .code_hash(CellOutput::calc_data_hash(&ALWAYS_SUCCESS_BIN))
+        .hash_type(ScriptHashType::Data2.into())
+        .build();
+    let cell = CellOutput::new_builder()
+        .lock(lock)
+        .capacity(
+            Capacity::bytes(capacity_bytes)
+                .expect("script capacity")
+                .pack(),
+        )
+        .build();
+    let cell_meta = CellMetaBuilder::from_cell_output(cell, Bytes::new())
         .out_point(out_point)
         .build();
     insert_cell(dummy, &cell_meta);
@@ -213,14 +236,15 @@ fn complete_tx(
         }
     }
 
-    let mut verifier = TransactionScriptsVerifier::new(rtx, dummy, consensus, tx_verify_env);
-    verifier.set_debug_printer(move |hash: &Byte32, message: &str| {
-        let prefix = match groups.get(hash) {
-            Some(text) => text.clone(),
-            None => format!("Script group: {:x}", hash),
-        };
-        eprintln!("{} DEBUG OUTPUT: {}", prefix, message);
-    });
+    let verifier = TransactionScriptsVerifier::new(rtx, dummy, consensus, tx_verify_env);
+    // Uncomment to debug tests:
+    // verifier.set_debug_printer(move |hash: &Byte32, message: &str| {
+    //     let prefix = match groups.get(hash) {
+    //         Some(text) => text.clone(),
+    //         None => format!("Script group: {:x}", hash),
+    //     };
+    //     eprintln!("{} DEBUG OUTPUT: {}", prefix, message);
+    // });
     verifier
 }
 
@@ -287,6 +311,42 @@ fn build_merkle_root_n_proof(
     (tree.root(), witness.as_bytes())
 }
 
+fn bury_in_merkle_tree<R: Rng>(
+    input_meta: &CellMeta,
+    output_meta: &CellMeta,
+    entries: u32,
+    rng: &mut R,
+) -> (Byte32, Bytes) {
+    let mut dummy_loader = DummyDataLoader::default();
+
+    let other_entries: Vec<(CellMeta, CellMeta)> = (0..entries)
+        .map(|_i| {
+            let type_id = if rng.gen_bool(0.5) {
+                Some(random_type_id_script())
+            } else {
+                None
+            };
+            let mut input_data = vec![1u8; rng.gen_range(1..100)];
+            rng.fill(&mut input_data[..]);
+            let input_data = input_data.into();
+            let input_meta = zero_lock_cell(&mut dummy_loader, &input_data, type_id.clone());
+            let mut output_data = vec![1u8; rng.gen_range(1..100)];
+            rng.fill(&mut output_data[..]);
+            let output_data = output_data.into();
+            let output_meta = zero_lock_cell(&mut dummy_loader, &output_data, type_id);
+
+            (input_meta, output_meta)
+        })
+        .collect();
+
+    let mut leaves: Vec<(&CellMeta, &CellMeta)> =
+        other_entries.iter().map(|(a, b)| (a, b)).collect();
+    let index = rng.gen_range(0..leaves.len());
+    leaves.insert(index, (&input_meta, &output_meta));
+
+    build_merkle_root_n_proof(&leaves, index as u32)
+}
+
 fn header(dummy: &mut DummyDataLoader, merkle_root: &Byte32) -> Byte32 {
     let mut rng = thread_rng();
     let epoch_ext = EpochExt::new_builder()
@@ -337,4 +397,359 @@ fn test_single_zero_lock_upgrade() {
 
     let verify_result = verifier.verify(u64::MAX);
     verify_result.expect("pass verification");
+}
+
+#[test]
+fn test_single_zero_lock_no_type_script_upgrade() {
+    let mut dummy_loader = DummyDataLoader::default();
+    let old_contract = vec![1u8; 100].into();
+    let input_cell_meta = zero_lock_cell(&mut dummy_loader, &old_contract, None);
+    let new_contract = vec![2u8; 100].into();
+    let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, None);
+
+    let (root, proof_witness) =
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+    let header_dep = header(&mut dummy_loader, &root);
+
+    let builder = TransactionBuilder::default()
+        .output(output_cell_meta.cell_output.clone())
+        .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
+        .header_dep(header_dep)
+        .witness(proof_witness.pack());
+
+    let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta]);
+
+    let verify_result = verifier.verify(u64::MAX);
+    verify_result.expect("pass verification");
+}
+
+#[test]
+fn test_zero_lock_with_other_cells_upgrade() {
+    let mut dummy_loader = DummyDataLoader::default();
+    let type_id = random_type_id_script();
+    let old_contract = vec![1u8; 100].into();
+    let input_cell_meta = zero_lock_cell(&mut dummy_loader, &old_contract, Some(type_id.clone()));
+    let new_contract = vec![2u8; 120].into();
+    let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
+
+    let input_cell2 = always_success_cell(&mut dummy_loader, 150);
+    let input_cell3 = always_success_cell(&mut dummy_loader, 200);
+    let output_cell2 = always_success_cell(&mut dummy_loader, 320);
+
+    let (root, proof_witness) =
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+    let header_dep = header(&mut dummy_loader, &root);
+
+    let builder = TransactionBuilder::default()
+        .output(output_cell_meta.cell_output.clone())
+        .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
+        .output(output_cell2.cell_output.clone())
+        .output_data(output_cell2.mem_cell_data.clone().unwrap().pack())
+        .header_dep(header_dep)
+        .witness(proof_witness.pack());
+
+    let verifier = complete_tx(
+        dummy_loader,
+        builder,
+        vec![input_cell_meta, input_cell2, input_cell3],
+    );
+
+    let verify_result = verifier.verify(u64::MAX);
+    verify_result.expect("pass verification");
+}
+
+#[test]
+fn test_more_than_one_input_zero_lock_fails_verification() {
+    let mut dummy_loader = DummyDataLoader::default();
+    let old_contract = vec![1u8; 100].into();
+    let input_cell_meta = zero_lock_cell(&mut dummy_loader, &old_contract, None);
+    let new_contract = vec![2u8; 100].into();
+    let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, None);
+    let old_contract2 = vec![3u8; 100].into();
+    let input_cell_meta2 = zero_lock_cell(&mut dummy_loader, &old_contract2, None);
+
+    let (root, proof_witness) =
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+    let header_dep = header(&mut dummy_loader, &root);
+
+    let builder = TransactionBuilder::default()
+        .output(output_cell_meta.cell_output.clone())
+        .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
+        .header_dep(header_dep)
+        .witness(proof_witness.pack());
+
+    let verifier = complete_tx(
+        dummy_loader,
+        builder,
+        vec![input_cell_meta.clone(), input_cell_meta2],
+    );
+
+    let verify_result = verifier.verify(u64::MAX);
+    assert_error_eq!(
+        verify_result.unwrap_err(),
+        ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
+            .input_lock_script(0),
+    );
+}
+
+#[test]
+fn test_more_than_one_output_zero_lock_fails_verification() {
+    let mut dummy_loader = DummyDataLoader::default();
+    let old_contract = vec![1u8; 200].into();
+    let input_cell_meta = zero_lock_cell(&mut dummy_loader, &old_contract, None);
+    let new_contract = vec![2u8; 100].into();
+    let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, None);
+    let new_contract2 = vec![3u8; 100].into();
+    let output_cell_meta2 = zero_lock_cell(&mut dummy_loader, &new_contract2, None);
+
+    let (root, proof_witness) =
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+    let header_dep = header(&mut dummy_loader, &root);
+
+    let builder = TransactionBuilder::default()
+        .output(output_cell_meta.cell_output.clone())
+        .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
+        .output(output_cell_meta2.cell_output.clone())
+        .output_data(output_cell_meta2.mem_cell_data.clone().unwrap().pack())
+        .header_dep(header_dep)
+        .witness(proof_witness.pack());
+
+    let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]);
+
+    let verify_result = verifier.verify(u64::MAX);
+    assert_error_eq!(
+        verify_result.unwrap_err(),
+        ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
+            .input_lock_script(0),
+    );
+}
+
+#[test]
+fn test_input_zero_lock_at_other_indices_fails_verification() {
+    let mut dummy_loader = DummyDataLoader::default();
+    let type_id = random_type_id_script();
+    let old_contract = vec![1u8; 100].into();
+    let input_cell_meta = zero_lock_cell(&mut dummy_loader, &old_contract, Some(type_id.clone()));
+    let new_contract = vec![2u8; 120].into();
+    let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
+
+    let input_cell2 = always_success_cell(&mut dummy_loader, 150);
+    let input_cell3 = always_success_cell(&mut dummy_loader, 200);
+    let output_cell2 = always_success_cell(&mut dummy_loader, 320);
+
+    let (root, proof_witness) =
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+    let header_dep = header(&mut dummy_loader, &root);
+
+    let builder = TransactionBuilder::default()
+        .output(output_cell_meta.cell_output.clone())
+        .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
+        .output(output_cell2.cell_output.clone())
+        .output_data(output_cell2.mem_cell_data.clone().unwrap().pack())
+        .header_dep(header_dep)
+        .witness(proof_witness.pack());
+
+    let verifier = complete_tx(
+        dummy_loader,
+        builder,
+        vec![input_cell2, input_cell_meta.clone(), input_cell3],
+    );
+
+    let verify_result = verifier.verify(u64::MAX);
+    assert_error_eq!(
+        verify_result.unwrap_err(),
+        ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
+            .input_lock_script(1),
+    );
+}
+
+#[test]
+fn test_output_zero_lock_at_other_indices_fails_verification() {
+    let mut dummy_loader = DummyDataLoader::default();
+    let type_id = random_type_id_script();
+    let old_contract = vec![1u8; 100].into();
+    let input_cell_meta = zero_lock_cell(&mut dummy_loader, &old_contract, Some(type_id.clone()));
+    let new_contract = vec![2u8; 120].into();
+    let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
+
+    let input_cell2 = always_success_cell(&mut dummy_loader, 150);
+    let input_cell3 = always_success_cell(&mut dummy_loader, 200);
+    let output_cell2 = always_success_cell(&mut dummy_loader, 320);
+
+    let (root, proof_witness) =
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+    let header_dep = header(&mut dummy_loader, &root);
+
+    let builder = TransactionBuilder::default()
+        .output(output_cell2.cell_output.clone())
+        .output_data(output_cell2.mem_cell_data.clone().unwrap().pack())
+        .output(output_cell_meta.cell_output.clone())
+        .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
+        .header_dep(header_dep)
+        .witness(proof_witness.pack());
+
+    let verifier = complete_tx(
+        dummy_loader,
+        builder,
+        vec![input_cell_meta.clone(), input_cell2, input_cell3],
+    );
+
+    let verify_result = verifier.verify(u64::MAX);
+    assert_error_eq!(
+        verify_result.unwrap_err(),
+        ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
+            .input_lock_script(0),
+    );
+}
+
+#[test]
+fn test_missing_header_fails_verification() {
+    let mut dummy_loader = DummyDataLoader::default();
+    let type_id = random_type_id_script();
+    let old_contract = vec![1u8; 100].into();
+    let input_cell_meta = zero_lock_cell(&mut dummy_loader, &old_contract, Some(type_id.clone()));
+    let new_contract = vec![2u8; 100].into();
+    let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
+
+    let (root, proof_witness) =
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+    let _header_dep = header(&mut dummy_loader, &root);
+
+    let builder = TransactionBuilder::default()
+        .output(output_cell_meta.cell_output.clone())
+        .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
+        .witness(proof_witness.pack());
+
+    let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]);
+
+    let verify_result = verifier.verify(u64::MAX);
+    assert_error_eq!(
+        verify_result.unwrap_err(),
+        ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
+            .input_lock_script(0),
+    );
+}
+
+proptest! {
+    #[test]
+    fn test_single_zero_lock_multiple_merkle_tree_entries_upgrade(
+        entries in 1..30u32,
+        seed: u64,
+    ) {
+        let mut dummy_loader = DummyDataLoader::default();
+        let type_id = random_type_id_script();
+        let old_contract = vec![1u8; 100].into();
+        let input_cell_meta = zero_lock_cell(&mut dummy_loader, &old_contract, Some(type_id.clone()));
+        let new_contract = vec![2u8; 100].into();
+        let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
+
+        let mut rng = StdRng::seed_from_u64(seed);
+        let (root, proof_witness) = bury_in_merkle_tree(
+            &input_cell_meta,
+            &output_cell_meta,
+            entries,
+            &mut rng,
+        );
+        let header_dep = header(&mut dummy_loader, &root);
+
+        let builder = TransactionBuilder::default()
+            .output(output_cell_meta.cell_output.clone())
+            .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
+            .header_dep(header_dep)
+            .witness(proof_witness.pack());
+
+        let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta]);
+
+        let verify_result = verifier.verify(u64::MAX);
+        verify_result.expect("pass verification");
+    }
+
+    #[test]
+    fn test_single_zero_lock_multiple_merkle_tree_entries_flip_root_bit_fails_verification(
+        entries in 1..30u32,
+        seed: u64,
+        flip_bit in 0..256usize,
+    ) {
+        let mut dummy_loader = DummyDataLoader::default();
+        let type_id = random_type_id_script();
+        let old_contract = vec![1u8; 100].into();
+        let input_cell_meta = zero_lock_cell(&mut dummy_loader, &old_contract, Some(type_id.clone()));
+        let new_contract = vec![2u8; 100].into();
+        let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
+
+        let mut rng = StdRng::seed_from_u64(seed);
+        let (root, proof_witness) = bury_in_merkle_tree(
+            &input_cell_meta,
+            &output_cell_meta,
+            entries,
+            &mut rng,
+        );
+
+        let mut raw_root = [0u8; 32];
+        raw_root.copy_from_slice(root.as_slice());
+        raw_root[flip_bit / 8] ^= 1 << (flip_bit % 8);
+        let root = raw_root.pack();
+
+        let header_dep = header(&mut dummy_loader, &root);
+
+        let builder = TransactionBuilder::default()
+            .output(output_cell_meta.cell_output.clone())
+            .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
+            .header_dep(header_dep)
+            .witness(proof_witness.pack());
+
+        let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]);
+
+        let verify_result = verifier.verify(u64::MAX);
+        assert_error_eq!(
+            verify_result.unwrap_err(),
+            ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
+                .input_lock_script(0),
+        );
+    }
+
+    #[test]
+    fn test_single_zero_lock_multiple_merkle_tree_entries_flip_proof_bit_fails_verification(
+        entries in 1..30u32,
+        seed: u64,
+        flip_bit: usize,
+    ) {
+        let mut dummy_loader = DummyDataLoader::default();
+        let type_id = random_type_id_script();
+        let old_contract = vec![1u8; 100].into();
+        let input_cell_meta = zero_lock_cell(&mut dummy_loader, &old_contract, Some(type_id.clone()));
+        let new_contract = vec![2u8; 100].into();
+        let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
+
+        let mut rng = StdRng::seed_from_u64(seed);
+        let (root, proof_witness) = bury_in_merkle_tree(
+            &input_cell_meta,
+            &output_cell_meta,
+            entries,
+            &mut rng,
+        );
+
+        let proof_witness = {
+            let mut lock = WitnessArgs::new_unchecked(proof_witness)
+                .as_reader().lock().to_opt().unwrap().as_slice().to_vec();
+            let flip_bit = flip_bit % (lock.len() * 8);
+            lock[flip_bit / 8] ^= 1 << (flip_bit % 8);
+
+            WitnessArgs::new_builder().lock(Some(Bytes::from(lock)).pack())
+                .build().as_bytes()
+        };
+
+        let header_dep = header(&mut dummy_loader, &root);
+
+        let builder = TransactionBuilder::default()
+            .output(output_cell_meta.cell_output.clone())
+            .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
+            .header_dep(header_dep)
+            .witness(proof_witness.pack());
+
+        let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]);
+
+        let verify_result = verifier.verify(u64::MAX);
+        assert!(format!("{}", verify_result.unwrap_err()).contains("Script(TransactionScriptError { source: Inputs[0].Lock, cause: ValidationFailure"));
+    }
 }

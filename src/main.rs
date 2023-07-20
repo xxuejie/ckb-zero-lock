@@ -73,14 +73,30 @@ pub fn run() -> Result<(), SysError> {
         debug!("The first output cell does not use zero lock!");
         return Err(SysError::Unknown(2));
     }
-    // Only one input / output cell can use zero lock
+    // Only one input cell can use zero lock
     if high_level::load_cell_lock_hash(1, Source::GroupInput) != Err(SysError::IndexOutOfBound) {
         debug!("More than one input cell uses zero lock!");
         return Err(SysError::Unknown(3));
     }
-    if high_level::load_cell_lock_hash(1, Source::GroupOutput) != Err(SysError::IndexOutOfBound) {
-        debug!("More than one output cell uses zero lock!");
-        return Err(SysError::Unknown(4));
+    // Only one output cell can use zero lock, since output locks are not
+    // considered in script groups for current transaction, we will need to
+    // manually iterate over all of them.
+    let mut i = 1;
+    loop {
+        match high_level::load_cell_lock_hash(i, Source::Output) {
+            Ok(hash) => {
+                if hash == current_script_hash {
+                    debug!("More than one output cell uses zero lock!");
+                    return Err(SysError::Unknown(4));
+                }
+            }
+            Err(SysError::IndexOutOfBound) => break,
+            e => {
+                debug!("Lock hash loading error: {:?}", e);
+                return Err(SysError::Unknown(5));
+            }
+        }
+        i += 1;
     }
 
     // Find merkle root from extension field at offset 128 in the first header
@@ -89,13 +105,13 @@ pub fn run() -> Result<(), SysError> {
         Ok(n) => {
             if n != 32 {
                 debug!("Extension does not have enough data for merkle root!");
-                return Err(SysError::Unknown(5));
+                return Err(SysError::Unknown(6));
             }
         }
         Err(SysError::LengthNotEnough(_)) => (),
         e => {
             debug!("Error loading merkle root from extension: {:?}", e);
-            return Err(SysError::Unknown(6));
+            return Err(SysError::Unknown(7));
         }
     }
     let merkle_root = Data::new(merkle_root);
@@ -128,7 +144,7 @@ pub fn run() -> Result<(), SysError> {
             }
             Err(e) => {
                 debug!("Error loading first output cell: {:?}", e);
-                return Err(SysError::Unknown(7));
+                return Err(SysError::Unknown(8));
             }
         }
     }
@@ -143,7 +159,7 @@ pub fn run() -> Result<(), SysError> {
             "Merkle proof failure! Actual root: {:?}, expected root: {:?}",
             actual_root, merkle_root
         );
-        return Err(SysError::Unknown(7));
+        return Err(SysError::Unknown(9));
     }
 
     Ok(())
