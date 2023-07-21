@@ -330,6 +330,56 @@ proptest! {
     }
 
     #[test]
+    fn test_single_zero_lock_long_invalid_witness_fails_verification(
+        witness_extra_bytes in 1..409600usize,
+        seed: u64,
+        flip_bit in 0..256usize,
+    ) {
+        let mut dummy_loader = DummyDataLoader::default();
+        let type_id = random_type_id_script();
+        let old_contract = vec![1u8; 100].into();
+        let input_cell_meta = zero_lock_cell(&mut dummy_loader, &old_contract, Some(type_id.clone()));
+        let new_contract = vec![2u8; 100].into();
+        let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
+
+        let input_type = {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let mut bytes = vec![0u8; witness_extra_bytes];
+            rng.fill(&mut bytes[..]);
+            Bytes::from(bytes)
+        };
+
+        let (root, proof_witness) =
+            build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0, 0, Some(input_type), None);
+
+        let proof_witness = {
+            let mut input_type = WitnessArgs::new_unchecked(proof_witness)
+                .as_reader().input_type().to_opt().unwrap().as_slice().to_vec();
+            let flip_bit = flip_bit % (input_type.len() * 8);
+            input_type[flip_bit / 8] ^= 1 << (flip_bit % 8);
+
+            WitnessArgs::new_builder().input_type(Some(Bytes::from(input_type)).pack())
+                .build().as_bytes()
+        };
+
+        let header_dep = header(&mut dummy_loader, &root);
+
+        let builder = TransactionBuilder::default()
+            .output(output_cell_meta.cell_output.clone())
+            .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
+            .header_dep(header_dep)
+            .witness(proof_witness.pack());
+
+        let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]).0;
+
+        let verify_result = verifier.verify(MAX_CYCLES);
+        assert!(
+            format!("{}", verify_result.unwrap_err())
+                .contains("Script(TransactionScriptError { source: Inputs[0].Lock, cause: ValidationFailure")
+        );
+    }
+
+    #[test]
     fn test_single_zero_lock_multiple_merkle_tree_entries_upgrade(
         entries in 1..30u32,
         seed: u64,
