@@ -132,8 +132,8 @@ pub fn run() -> Result<(), SysError> {
 
     // Generate the leaf we need:
     //
-    // 01 + (the first input cell’s data hash) + (the first output cell’s data hash) +
-    // (the first output cell’s CellOutput structure)
+    // 01 + (zero lock input cell’s OutPoint) + (zero lock output cell’s data hash) +
+    // (zero lock output cell’s CellOutput structure)
     let mut hasher = Blake2bBuilder::new(32)
         .personal(b"ckb-default-hash")
         .build();
