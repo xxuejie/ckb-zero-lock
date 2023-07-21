@@ -265,12 +265,39 @@ impl Merge for Blake2bHash {
     }
 }
 
-pub fn hash_upgrade_data(old_cell: &CellMeta, new_cell: &CellMeta) -> Byte32 {
+pub fn hash_upgrade_data(
+    old_cell: &CellMeta,
+    new_cell: &CellMeta,
+    input_type: Option<Bytes>,
+    output_type: Option<Bytes>,
+) -> Byte32 {
     let mut hasher = new_blake2b();
     hasher.update(&[1u8]);
     hasher.update(old_cell.out_point.as_slice());
     hasher.update(&blake2b_256(new_cell.mem_cell_data.as_ref().unwrap())[..]);
     hasher.update(new_cell.cell_output.as_slice());
+    if let Some(input_type) = input_type {
+        hasher.update(&[1u8]);
+        hasher.update(
+            &TryInto::<u32>::try_into(input_type.len())
+                .unwrap()
+                .to_le_bytes(),
+        );
+        hasher.update(&input_type);
+    } else {
+        hasher.update(&[0u8]);
+    }
+    if let Some(output_type) = output_type {
+        hasher.update(&[1u8]);
+        hasher.update(
+            &TryInto::<u32>::try_into(output_type.len())
+                .unwrap()
+                .to_le_bytes(),
+        );
+        hasher.update(&output_type);
+    } else {
+        hasher.update(&[0u8]);
+    }
     let mut hash = [0u8; 32];
     hasher.finalize(&mut hash[..]);
     Byte32::new(hash)
@@ -280,11 +307,18 @@ pub fn build_merkle_root_n_proof(
     all_leaves: &[(&CellMeta, &CellMeta)],
     selected: u32,
     header_index: u32,
+    input_type: Option<Bytes>,
+    output_type: Option<Bytes>,
 ) -> (Byte32, Bytes) {
-    let hashed_leaves: Vec<Byte32> = all_leaves
-        .iter()
-        .map(|(old_cell, new_cell)| hash_upgrade_data(old_cell, new_cell))
-        .collect();
+    let mut hashed_leaves: Vec<Byte32> = Vec::with_capacity(all_leaves.len());
+    for (i, (old_cell, new_cell)) in all_leaves.iter().enumerate() {
+        let leaf = if i == header_index as usize {
+            hash_upgrade_data(old_cell, new_cell, input_type.clone(), output_type.clone())
+        } else {
+            hash_upgrade_data(old_cell, new_cell, None, None)
+        };
+        hashed_leaves.push(leaf);
+    }
     let tree: MerkleTree<Byte32, Blake2bHash> = CBMT::build_merkle_tree(&hashed_leaves);
     let proof = tree.build_proof(&[selected]).expect("build merkle proof");
 
@@ -309,6 +343,8 @@ pub fn build_merkle_root_n_proof(
 
     let witness = WitnessArgs::new_builder()
         .lock(Some(Bytes::from(data)).pack())
+        .input_type(input_type.pack())
+        .output_type(output_type.pack())
         .build();
 
     (tree.root(), witness.as_bytes())
@@ -320,6 +356,8 @@ pub fn bury_in_merkle_tree<R: Rng>(
     entries: u32,
     rng: &mut R,
     header_index: u32,
+    input_type: Option<Bytes>,
+    output_type: Option<Bytes>,
 ) -> (Byte32, Bytes) {
     let mut dummy_loader = DummyDataLoader::default();
 
@@ -348,7 +386,7 @@ pub fn bury_in_merkle_tree<R: Rng>(
     let index = rng.gen_range(0..leaves.len());
     leaves.insert(index, (&input_meta, &output_meta));
 
-    build_merkle_root_n_proof(&leaves, index as u32, header_index)
+    build_merkle_root_n_proof(&leaves, index as u32, header_index, input_type, output_type)
 }
 
 pub fn header(dummy: &mut DummyDataLoader, merkle_root: &Byte32) -> Byte32 {

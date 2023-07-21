@@ -32,8 +32,15 @@ fn main() {
     let new_contract = vec![2u8; 100].into();
     let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
 
-    let (root, proof_witness) =
-        bury_in_merkle_tree(&input_cell_meta, &output_cell_meta, entries, &mut rng, 0);
+    let (root, proof_witness) = bury_in_merkle_tree(
+        &input_cell_meta,
+        &output_cell_meta,
+        entries,
+        &mut rng,
+        0,
+        None,
+        None,
+    );
     let header_dep = header(&mut dummy_loader, &root);
 
     println!(

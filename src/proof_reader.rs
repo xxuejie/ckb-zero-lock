@@ -1,12 +1,8 @@
-use super::Data;
+use super::{Data, ERROR_CODE_PROOF_READER};
 use alloc::vec::Vec;
-use ckb_std::{ckb_constants::Source, debug};
+use ckb_std::debug;
 use core::cmp;
-use core::ffi::c_void;
-use core::slice::from_raw_parts;
 use merkle_cbt::{merkle_tree::Merge, MerkleProof};
-
-const ERROR_CODE: i32 = -70;
 
 const FIXED_BUF_SIZE: usize = 4096;
 
@@ -61,7 +57,7 @@ enum ReadState {
 }
 
 #[derive(Debug)]
-struct StateVisitor {
+pub struct ProofVisitor {
     state: ReadState,
     total: usize,
 
@@ -72,7 +68,7 @@ struct StateVisitor {
     lemmas: Vec<Data>,
 }
 
-impl Default for StateVisitor {
+impl Default for ProofVisitor {
     fn default() -> Self {
         Self {
             state: ReadState::HeaderIndex,
@@ -85,12 +81,16 @@ impl Default for StateVisitor {
     }
 }
 
-impl StateVisitor {
-    fn build<M: Merge<Item = Data>>(self) -> (u32, MerkleProof<Data, M>) {
-        (
+impl ProofVisitor {
+    pub fn build<M: Merge<Item = Data>>(self) -> Option<(u32, MerkleProof<Data, M>)> {
+        if self.state != ReadState::Completed {
+            debug!("Witness does not provide a complete merkle proof!");
+            return None;
+        }
+        Some((
             self.header_index,
             MerkleProof::new(self.indices, self.lemmas),
-        )
+        ))
     }
 
     fn process_internal_data(&mut self) -> i32 {
@@ -161,7 +161,7 @@ impl StateVisitor {
         0
     }
 
-    fn process(&mut self, data: &[u8]) -> i32 {
+    pub fn process(&mut self, data: &[u8]) -> i32 {
         let mut consumed = 0;
         loop {
             consumed += self.buffer.fill(&data[consumed..]);
@@ -173,7 +173,7 @@ impl StateVisitor {
                 && (self.buffer.data().len() > 0 || consumed < data.len())
             {
                 debug!("Merkle proof is fully parsed, but trailing data is found!");
-                return ERROR_CODE;
+                return ERROR_CODE_PROOF_READER;
             }
             if consumed >= data.len() {
                 break;
@@ -181,49 +181,4 @@ impl StateVisitor {
         }
         0
     }
-}
-
-pub type Accessor = unsafe extern "C" fn(*const u8, usize, *mut c_void) -> i32;
-
-extern "C" {
-    fn cwhr_rust_read_witness_lock(
-        index: usize,
-        source: usize,
-        accessor: Accessor,
-        context: *mut c_void,
-    ) -> i32;
-}
-
-#[no_mangle]
-unsafe extern "C" fn visit_data(data: *const u8, length: usize, context: *mut c_void) -> i32 {
-    let data = from_raw_parts(data, length);
-    let visitor = &mut *(context as *mut StateVisitor);
-    visitor.process(data)
-}
-
-pub fn parse_merkle_proof<M: Merge<Item = Data>>(
-    index: usize,
-    source: Source,
-) -> Option<(u32, MerkleProof<Data, M>)> {
-    let mut visitor = StateVisitor::default();
-    let result = unsafe {
-        cwhr_rust_read_witness_lock(
-            index,
-            source as usize,
-            visit_data,
-            &mut visitor as *mut StateVisitor as *mut _,
-        )
-    };
-    if result != 0 {
-        debug!(
-            "Error reading merkle proof from witness! Return code: {}",
-            result
-        );
-        return None;
-    }
-    if visitor.state != ReadState::Completed {
-        debug!("Witness does not provide a complete merkle proof!");
-        return None;
-    }
-    Some(visitor.build())
 }

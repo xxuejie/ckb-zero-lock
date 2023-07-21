@@ -16,6 +16,10 @@ use blake2b_ref::Blake2bBuilder;
 use merkle_cbt::merkle_tree::Merge;
 
 mod proof_reader;
+mod witness_reader;
+
+pub const ERROR_CODE_WITNESS_READER: i32 = -70;
+pub const ERROR_CODE_PROOF_READER: i32 = -71;
 
 #[derive(Debug, Default, Clone, PartialOrd, Ord, PartialEq, Eq, Hash)]
 pub struct Data([u8; 32]);
@@ -103,10 +107,61 @@ pub fn run() -> Result<(), SysError> {
     }
     let output_index = output_index.unwrap();
 
-    // Load merkle proof and header index from lock field in witness from the first input cell
-    let (header_index, merkle_proof) =
-        proof_reader::parse_merkle_proof::<Blake2bHash>(0, Source::GroupInput)
-            .expect("parsing merkle proof failure!");
+    // Generate the leaf we need from concatenation of the following bytes:
+    //
+    // * Byte 0x01, as version for future changes
+    // * Zero lock input cell’s OutPoint
+    // * Zero lock output cell’s data hash
+    // * Zero lock output cell’s CellOutput structure
+    // * Byte 0x01 if witness has input_type field, byte 0x00 otherwise
+    // * (If input_type exists) Length of input_type as little-endian u32
+    // * (If input_type exists) Content of input_type field
+    // * Byte 0x01 if witness has output_type field, byte 0x00 otherwise
+    // * (If output_type exists) Length of output_type as little-endian u32
+    // * (If output_type exists) Content of output_type field
+    let mut hasher = Blake2bBuilder::new(32)
+        .personal(b"ckb-default-hash")
+        .build();
+    hasher.update(&[1u8]);
+    hasher.update(high_level::load_input_out_point(0, Source::GroupInput)?.as_slice());
+    hasher.update(&high_level::load_cell_data_hash(
+        output_index,
+        Source::Output,
+    )?);
+    let mut loaded = 0;
+    let mut buf = [0u8; 4096];
+    loop {
+        match syscalls::load_cell(&mut buf, loaded, output_index, Source::Output) {
+            Ok(actual_loaded_len) => {
+                hasher.update(&buf[..actual_loaded_len]);
+                break;
+            }
+            Err(SysError::LengthNotEnough(_total_length)) => {
+                hasher.update(&buf);
+                loaded += buf.len();
+            }
+            Err(e) => {
+                debug!("Error loading first output cell: {:?}", e);
+                return Err(SysError::Unknown(7));
+            }
+        }
+    }
+
+    // Read the following data from witness:
+    //
+    // * Index of header to load merkle root
+    // * Merkle proof
+    // * Remainder of witness data (input_type, output_type) so we can ensure non-malleability
+    let (proof_visitor, hasher) = witness_reader::read_witness(0, Source::GroupInput, hasher)
+        .expect("parsing witness failure!");
+    let (header_index, merkle_proof) = proof_visitor
+        .build::<Blake2bHash>()
+        .expect("parsing merkle proof failure!");
+
+    // Now we have all the data for the hasher, we can build the actual merkle leaf.
+    let mut leaf = [0u8; 32];
+    hasher.finalize(&mut leaf[..]);
+    let leaf = Data::new(leaf);
 
     // Find merkle root from extension field at offset 128 in the designated header
     let mut merkle_root = [0u8; 32];
@@ -129,41 +184,6 @@ pub fn run() -> Result<(), SysError> {
         }
     }
     let merkle_root = Data::new(merkle_root);
-
-    // Generate the leaf we need:
-    //
-    // 01 + (zero lock input cell’s OutPoint) + (zero lock output cell’s data hash) +
-    // (zero lock output cell’s CellOutput structure)
-    let mut hasher = Blake2bBuilder::new(32)
-        .personal(b"ckb-default-hash")
-        .build();
-    hasher.update(&[1u8]);
-    hasher.update(high_level::load_input_out_point(0, Source::GroupInput)?.as_slice());
-    hasher.update(&high_level::load_cell_data_hash(
-        output_index,
-        Source::Output,
-    )?);
-    let mut loaded = 0;
-    let mut buf = [0u8; 4096];
-    loop {
-        match syscalls::load_cell(&mut buf, loaded, output_index, Source::Output) {
-            Ok(actual_loaded_len) => {
-                hasher.update(&buf[..actual_loaded_len]);
-                break;
-            }
-            Err(SysError::LengthNotEnough(_total_length)) => {
-                hasher.update(&buf);
-                loaded += 4096;
-            }
-            Err(e) => {
-                debug!("Error loading first output cell: {:?}", e);
-                return Err(SysError::Unknown(7));
-            }
-        }
-    }
-    let mut leaf = [0u8; 32];
-    hasher.finalize(&mut leaf[..]);
-    let leaf = Data::new(leaf);
 
     // Actual merkle proof verification
     let actual_root = merkle_proof.root(&[leaf]).expect("no root");
