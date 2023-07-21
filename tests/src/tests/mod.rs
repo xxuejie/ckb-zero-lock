@@ -165,7 +165,7 @@ fn test_more_than_one_output_zero_lock_fails_verification() {
 }
 
 #[test]
-fn test_input_zero_lock_at_other_indices_fails_verification() {
+fn test_input_zero_lock_at_other_indices() {
     let mut dummy_loader = DummyDataLoader::default();
     let type_id = random_type_id_script();
     let old_contract = vec![1u8; 100].into();
@@ -187,25 +187,22 @@ fn test_input_zero_lock_at_other_indices_fails_verification() {
         .output(output_cell2.cell_output.clone())
         .output_data(output_cell2.mem_cell_data.clone().unwrap().pack())
         .header_dep(header_dep)
+        .witness(Bytes::new().pack())
         .witness(proof_witness.pack());
 
     let verifier = complete_tx(
         dummy_loader,
         builder,
-        vec![input_cell2, input_cell_meta.clone(), input_cell3],
+        vec![input_cell2, input_cell_meta, input_cell3],
     )
     .0;
 
     let verify_result = verifier.verify(MAX_CYCLES);
-    assert_error_eq!(
-        verify_result.unwrap_err(),
-        ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
-            .input_lock_script(1),
-    );
+    verify_result.expect("pass verification");
 }
 
 #[test]
-fn test_output_zero_lock_at_other_indices_fails_verification() {
+fn test_output_zero_lock_at_other_indices() {
     let mut dummy_loader = DummyDataLoader::default();
     let type_id = random_type_id_script();
     let old_contract = vec![1u8; 100].into();
@@ -232,16 +229,12 @@ fn test_output_zero_lock_at_other_indices_fails_verification() {
     let verifier = complete_tx(
         dummy_loader,
         builder,
-        vec![input_cell_meta.clone(), input_cell2, input_cell3],
+        vec![input_cell_meta, input_cell2, input_cell3],
     )
     .0;
 
     let verify_result = verifier.verify(MAX_CYCLES);
-    assert_error_eq!(
-        verify_result.unwrap_err(),
-        ScriptError::validation_failure(&input_cell_meta.cell_output.lock(), -61)
-            .input_lock_script(0),
-    );
+    verify_result.expect("pass verification");
 }
 
 #[test]

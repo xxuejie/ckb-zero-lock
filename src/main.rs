@@ -63,41 +63,42 @@ pub fn program_entry() -> i8 {
 }
 
 pub fn run() -> Result<(), SysError> {
-    let current_script_hash = high_level::load_script_hash()?;
-    // The first input / output cell must use zero lock
-    if high_level::load_cell_lock_hash(0, Source::Input)? != current_script_hash {
-        debug!("The first input cell does not use zero lock!");
-        return Err(SysError::Unknown(1));
-    }
-    if high_level::load_cell_lock_hash(0, Source::Output)? != current_script_hash {
-        debug!("The first output cell does not use zero lock!");
-        return Err(SysError::Unknown(2));
-    }
     // Only one input cell can use zero lock
     if high_level::load_cell_lock_hash(1, Source::GroupInput) != Err(SysError::IndexOutOfBound) {
         debug!("More than one input cell uses zero lock!");
-        return Err(SysError::Unknown(3));
+        return Err(SysError::Unknown(1));
     }
     // Only one output cell can use zero lock, since output locks are not
     // considered in script groups for current transaction, we will need to
     // manually iterate over all of them.
-    let mut i = 1;
+    let current_script_hash = high_level::load_script_hash()?;
+    let mut i = 0;
+    let mut output_index = None;
     loop {
         match high_level::load_cell_lock_hash(i, Source::Output) {
             Ok(hash) => {
                 if hash == current_script_hash {
-                    debug!("More than one output cell uses zero lock!");
-                    return Err(SysError::Unknown(4));
+                    if output_index.is_some() {
+                        debug!("More than one output cell uses zero lock!");
+                        return Err(SysError::Unknown(2));
+                    } else {
+                        output_index = Some(i);
+                    }
                 }
             }
             Err(SysError::IndexOutOfBound) => break,
             e => {
                 debug!("Lock hash loading error: {:?}", e);
-                return Err(SysError::Unknown(5));
+                return Err(SysError::Unknown(3));
             }
         }
         i += 1;
     }
+    if output_index.is_none() {
+        debug!("No output cell uses zero lock!");
+        return Err(SysError::Unknown(4));
+    }
+    let output_index = output_index.unwrap();
 
     // Find merkle root from extension field at offset 128 in the first header
     let mut merkle_root = [0u8; 32];
@@ -105,19 +106,19 @@ pub fn run() -> Result<(), SysError> {
         Ok(n) => {
             if n != 32 {
                 debug!("Extension does not have enough data for merkle root!");
-                return Err(SysError::Unknown(6));
+                return Err(SysError::Unknown(5));
             }
         }
         Err(SysError::LengthNotEnough(_)) => (),
         e => {
             debug!("Error loading merkle root from extension: {:?}", e);
-            return Err(SysError::Unknown(7));
+            return Err(SysError::Unknown(6));
         }
     }
     let merkle_root = Data::new(merkle_root);
 
     // Load merkle proof from lock field in witness from the first input cell
-    let merkle_proof = proof_reader::parse_merkle_proof::<Blake2bHash>(0, Source::Input)
+    let merkle_proof = proof_reader::parse_merkle_proof::<Blake2bHash>(0, Source::GroupInput)
         .expect("parsing merkle proof failure!");
 
     // Generate the leaf we need:
@@ -128,12 +129,15 @@ pub fn run() -> Result<(), SysError> {
         .personal(b"ckb-default-hash")
         .build();
     hasher.update(&[1u8]);
-    hasher.update(&high_level::load_cell_data_hash(0, Source::Input)?);
-    hasher.update(&high_level::load_cell_data_hash(0, Source::Output)?);
+    hasher.update(&high_level::load_cell_data_hash(0, Source::GroupInput)?);
+    hasher.update(&high_level::load_cell_data_hash(
+        output_index,
+        Source::Output,
+    )?);
     let mut loaded = 0;
     let mut buf = [0u8; 4096];
     loop {
-        match syscalls::load_cell(&mut buf, loaded, 0, Source::Output) {
+        match syscalls::load_cell(&mut buf, loaded, output_index, Source::Output) {
             Ok(actual_loaded_len) => {
                 hasher.update(&buf[..actual_loaded_len]);
                 break;
@@ -144,7 +148,7 @@ pub fn run() -> Result<(), SysError> {
             }
             Err(e) => {
                 debug!("Error loading first output cell: {:?}", e);
-                return Err(SysError::Unknown(8));
+                return Err(SysError::Unknown(7));
             }
         }
     }
@@ -159,7 +163,7 @@ pub fn run() -> Result<(), SysError> {
             "Merkle proof failure! Actual root: {:?}, expected root: {:?}",
             actual_root, merkle_root
         );
-        return Err(SysError::Unknown(9));
+        return Err(SysError::Unknown(8));
     }
 
     Ok(())
