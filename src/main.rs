@@ -100,9 +100,19 @@ pub fn run() -> Result<(), SysError> {
     }
     let output_index = output_index.unwrap();
 
-    // Find merkle root from extension field at offset 128 in the first header
+    // Load merkle proof and header index from lock field in witness from the first input cell
+    let (header_index, merkle_proof) =
+        proof_reader::parse_merkle_proof::<Blake2bHash>(0, Source::GroupInput)
+            .expect("parsing merkle proof failure!");
+
+    // Find merkle root from extension field at offset 128 in the designated header
     let mut merkle_root = [0u8; 32];
-    match syscalls::load_extension(&mut merkle_root, 128, 0, Source::HeaderDep) {
+    match syscalls::load_extension(
+        &mut merkle_root,
+        128,
+        header_index as usize,
+        Source::HeaderDep,
+    ) {
         Ok(n) => {
             if n != 32 {
                 debug!("Extension does not have enough data for merkle root!");
@@ -116,10 +126,6 @@ pub fn run() -> Result<(), SysError> {
         }
     }
     let merkle_root = Data::new(merkle_root);
-
-    // Load merkle proof from lock field in witness from the first input cell
-    let merkle_proof = proof_reader::parse_merkle_proof::<Blake2bHash>(0, Source::GroupInput)
-        .expect("parsing merkle proof failure!");
 
     // Generate the leaf we need:
     //

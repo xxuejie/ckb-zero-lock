@@ -52,6 +52,7 @@ impl FixedBuffer {
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum ReadState {
+    HeaderIndex,
     IndicesLength,
     Indices,
     LemmasLength,
@@ -66,6 +67,7 @@ struct StateVisitor {
 
     buffer: FixedBuffer,
 
+    header_index: u32,
     indices: Vec<u32>,
     lemmas: Vec<Data>,
 }
@@ -73,9 +75,10 @@ struct StateVisitor {
 impl Default for StateVisitor {
     fn default() -> Self {
         Self {
-            state: ReadState::IndicesLength,
+            state: ReadState::HeaderIndex,
             total: 0,
             buffer: FixedBuffer::default(),
+            header_index: u32::MAX,
             indices: Vec::new(),
             lemmas: Vec::new(),
         }
@@ -83,8 +86,11 @@ impl Default for StateVisitor {
 }
 
 impl StateVisitor {
-    fn build<M: Merge<Item = Data>>(self) -> MerkleProof<Data, M> {
-        MerkleProof::new(self.indices, self.lemmas)
+    fn build<M: Merge<Item = Data>>(self) -> (u32, MerkleProof<Data, M>) {
+        (
+            self.header_index,
+            MerkleProof::new(self.indices, self.lemmas),
+        )
     }
 
     fn process_internal_data(&mut self) -> i32 {
@@ -92,6 +98,16 @@ impl StateVisitor {
             let mut changed = false;
             let data = self.buffer.data();
             match self.state {
+                ReadState::HeaderIndex => {
+                    if data.len() >= 4 {
+                        let mut t = [0u8; 4];
+                        t.copy_from_slice(&data[0..4]);
+                        self.buffer.consume(4);
+                        self.header_index = u32::from_le_bytes(t);
+                        self.state = ReadState::IndicesLength;
+                        changed = true;
+                    }
+                }
                 ReadState::IndicesLength => {
                     if data.len() >= 4 {
                         let mut t = [0u8; 4];
@@ -188,7 +204,7 @@ unsafe extern "C" fn visit_data(data: *const u8, length: usize, context: *mut c_
 pub fn parse_merkle_proof<M: Merge<Item = Data>>(
     index: usize,
     source: Source,
-) -> Option<MerkleProof<Data, M>> {
+) -> Option<(u32, MerkleProof<Data, M>)> {
     let mut visitor = StateVisitor::default();
     let result = unsafe {
         cwhr_rust_read_witness_lock(

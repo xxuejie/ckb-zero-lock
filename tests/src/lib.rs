@@ -279,6 +279,7 @@ pub fn hash_upgrade_data(old_cell: &CellMeta, new_cell: &CellMeta) -> Byte32 {
 pub fn build_merkle_root_n_proof(
     all_leaves: &[(&CellMeta, &CellMeta)],
     selected: u32,
+    header_index: u32,
 ) -> (Byte32, Bytes) {
     let hashed_leaves: Vec<Byte32> = all_leaves
         .iter()
@@ -288,6 +289,7 @@ pub fn build_merkle_root_n_proof(
     let proof = tree.build_proof(&[selected]).expect("build merkle proof");
 
     let mut data = vec![];
+    data.extend(header_index.to_le_bytes());
     data.extend(
         TryInto::<u32>::try_into(proof.indices().len())
             .unwrap()
@@ -317,6 +319,7 @@ pub fn bury_in_merkle_tree<R: Rng>(
     output_meta: &CellMeta,
     entries: u32,
     rng: &mut R,
+    header_index: u32,
 ) -> (Byte32, Bytes) {
     let mut dummy_loader = DummyDataLoader::default();
 
@@ -345,7 +348,7 @@ pub fn bury_in_merkle_tree<R: Rng>(
     let index = rng.gen_range(0..leaves.len());
     leaves.insert(index, (&input_meta, &output_meta));
 
-    build_merkle_root_n_proof(&leaves, index as u32)
+    build_merkle_root_n_proof(&leaves, index as u32, header_index)
 }
 
 pub fn header(dummy: &mut DummyDataLoader, merkle_root: &Byte32) -> Byte32 {

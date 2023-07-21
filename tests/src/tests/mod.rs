@@ -22,7 +22,7 @@ fn test_single_zero_lock_upgrade() {
     let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
 
     let (root, proof_witness) =
-        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0, 0);
     let header_dep = header(&mut dummy_loader, &root);
 
     let builder = TransactionBuilder::default()
@@ -46,7 +46,7 @@ fn test_single_zero_lock_no_type_script_upgrade() {
     let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, None);
 
     let (root, proof_witness) =
-        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0, 0);
     let header_dep = header(&mut dummy_loader, &root);
 
     let builder = TransactionBuilder::default()
@@ -75,7 +75,7 @@ fn test_zero_lock_with_other_cells_upgrade() {
     let output_cell2 = always_success_cell(&mut dummy_loader, 320);
 
     let (root, proof_witness) =
-        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0, 0);
     let header_dep = header(&mut dummy_loader, &root);
 
     let builder = TransactionBuilder::default()
@@ -98,6 +98,33 @@ fn test_zero_lock_with_other_cells_upgrade() {
 }
 
 #[test]
+fn test_single_zero_lock_with_extra_headers_upgrade() {
+    let mut dummy_loader = DummyDataLoader::default();
+    let type_id = random_type_id_script();
+    let old_contract = vec![1u8; 100].into();
+    let input_cell_meta = zero_lock_cell(&mut dummy_loader, &old_contract, Some(type_id.clone()));
+    let new_contract = vec![2u8; 100].into();
+    let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
+
+    let (root, proof_witness) =
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0, 1);
+    let header_dep = header(&mut dummy_loader, &Byte32::zero());
+    let header_dep2 = header(&mut dummy_loader, &root);
+
+    let builder = TransactionBuilder::default()
+        .output(output_cell_meta.cell_output.clone())
+        .output_data(output_cell_meta.mem_cell_data.clone().unwrap().pack())
+        .header_dep(header_dep)
+        .header_dep(header_dep2)
+        .witness(proof_witness.pack());
+
+    let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta]).0;
+
+    let verify_result = verifier.verify(MAX_CYCLES);
+    verify_result.expect("pass verification");
+}
+
+#[test]
 fn test_more_than_one_input_zero_lock_fails_verification() {
     let mut dummy_loader = DummyDataLoader::default();
     let old_contract = vec![1u8; 100].into();
@@ -108,7 +135,7 @@ fn test_more_than_one_input_zero_lock_fails_verification() {
     let input_cell_meta2 = zero_lock_cell(&mut dummy_loader, &old_contract2, None);
 
     let (root, proof_witness) =
-        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0, 0);
     let header_dep = header(&mut dummy_loader, &root);
 
     let builder = TransactionBuilder::default()
@@ -143,7 +170,7 @@ fn test_more_than_one_output_zero_lock_fails_verification() {
     let output_cell_meta2 = zero_lock_cell(&mut dummy_loader, &new_contract2, None);
 
     let (root, proof_witness) =
-        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0, 0);
     let header_dep = header(&mut dummy_loader, &root);
 
     let builder = TransactionBuilder::default()
@@ -178,7 +205,7 @@ fn test_input_zero_lock_at_other_indices() {
     let output_cell2 = always_success_cell(&mut dummy_loader, 320);
 
     let (root, proof_witness) =
-        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0, 0);
     let header_dep = header(&mut dummy_loader, &root);
 
     let builder = TransactionBuilder::default()
@@ -215,7 +242,7 @@ fn test_output_zero_lock_at_other_indices() {
     let output_cell2 = always_success_cell(&mut dummy_loader, 320);
 
     let (root, proof_witness) =
-        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0, 0);
     let header_dep = header(&mut dummy_loader, &root);
 
     let builder = TransactionBuilder::default()
@@ -247,7 +274,7 @@ fn test_missing_header_fails_verification() {
     let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
 
     let (root, proof_witness) =
-        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+        build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0, 0);
     let _header_dep = header(&mut dummy_loader, &root);
 
     let builder = TransactionBuilder::default()
@@ -279,7 +306,7 @@ proptest! {
         let output_cell_meta = zero_lock_cell(&mut dummy_loader, &new_contract, Some(type_id));
 
         let (root, proof_witness) =
-            build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0);
+            build_merkle_root_n_proof(&[(&input_cell_meta, &output_cell_meta)], 0, 0);
 
         let proof_witness = {
             let mut rng = StdRng::seed_from_u64(seed);
@@ -324,6 +351,7 @@ proptest! {
             &output_cell_meta,
             entries,
             &mut rng,
+            0,
         );
         let header_dep = header(&mut dummy_loader, &root);
 
@@ -358,6 +386,7 @@ proptest! {
             &output_cell_meta,
             entries,
             &mut rng,
+            0,
         );
 
         let mut raw_root = [0u8; 32];
@@ -402,6 +431,7 @@ proptest! {
             &output_cell_meta,
             entries,
             &mut rng,
+            0,
         );
 
         let proof_witness = {
@@ -425,7 +455,10 @@ proptest! {
         let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]).0;
 
         let verify_result = verifier.verify(MAX_CYCLES);
-        assert!(format!("{}", verify_result.unwrap_err()).contains("Script(TransactionScriptError { source: Inputs[0].Lock, cause: ValidationFailure"));
+        assert!(
+            format!("{}", verify_result.unwrap_err())
+                .contains("Script(TransactionScriptError { source: Inputs[0].Lock, cause: ValidationFailure")
+        );
     }
 
     #[test]
@@ -447,6 +480,7 @@ proptest! {
             &output_cell_meta,
             entries,
             &mut rng,
+            0,
         );
 
         let proof_witness = {
@@ -470,6 +504,9 @@ proptest! {
         let verifier = complete_tx(dummy_loader, builder, vec![input_cell_meta.clone()]).0;
 
         let verify_result = verifier.verify(MAX_CYCLES);
-        assert!(format!("{}", verify_result.unwrap_err()).contains("Script(TransactionScriptError { source: Inputs[0].Lock, cause: ValidationFailure"));
+        assert!(
+            format!("{}", verify_result.unwrap_err())
+                .contains("Script(TransactionScriptError { source: Inputs[0].Lock, cause: ValidationFailure")
+        );
     }
 }
