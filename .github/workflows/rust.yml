@@ -8,7 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  ZERO_LOCK_PATH: ../target/riscv64imac_zba_zbb_zbc_zbs-unknown-ckb-elf/debug/ckb-zero-lock
+  RUSTFLAGS: "--cfg debug_assertions"
 
 jobs:
   build:
@@ -22,6 +22,6 @@ jobs:
     - name: Install custom Rust toolchain
       run: pushd . && cd /tmp && curl https://raw.githubusercontent.com/xxuejie/ckb-contract-toolchains/c4b3a52e2f47fcdeb9f7b663f193fec506f7e158/install.sh | bash -s -- 20230710-1 && popd
     - name: Build
-      run: cargo build --verbose --target=riscv64imac_zba_zbb_zbc_zbs-unknown-ckb-elf
+      run: cargo build --verbose --release --target=riscv64imac_zba_zbb_zbc_zbs-unknown-ckb-elf
     - name: Run tests
       run: cd tests; cargo test --verbose
