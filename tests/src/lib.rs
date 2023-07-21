@@ -268,7 +268,7 @@ impl Merge for Blake2bHash {
 pub fn hash_upgrade_data(old_cell: &CellMeta, new_cell: &CellMeta) -> Byte32 {
     let mut hasher = new_blake2b();
     hasher.update(&[1u8]);
-    hasher.update(&blake2b_256(old_cell.mem_cell_data.as_ref().unwrap())[..]);
+    hasher.update(old_cell.out_point.as_slice());
     hasher.update(&blake2b_256(new_cell.mem_cell_data.as_ref().unwrap())[..]);
     hasher.update(new_cell.cell_output.as_slice());
     let mut hash = [0u8; 32];

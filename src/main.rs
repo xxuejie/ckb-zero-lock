@@ -4,7 +4,10 @@
 #![feature(alloc_error_handler)]
 #![feature(panic_info_message)]
 
-use ckb_std::{ckb_constants::Source, debug, default_alloc, error::SysError, high_level, syscalls};
+use ckb_std::{
+    ckb_constants::Source, ckb_types::prelude::Entity, debug, default_alloc, error::SysError,
+    high_level, syscalls,
+};
 
 ckb_std::entry!(program_entry);
 default_alloc!();
@@ -135,7 +138,7 @@ pub fn run() -> Result<(), SysError> {
         .personal(b"ckb-default-hash")
         .build();
     hasher.update(&[1u8]);
-    hasher.update(&high_level::load_cell_data_hash(0, Source::GroupInput)?);
+    hasher.update(high_level::load_input_out_point(0, Source::GroupInput)?.as_slice());
     hasher.update(&high_level::load_cell_data_hash(
         output_index,
         Source::Output,
