@@ -1,8 +1,5 @@
 #![no_std]
-#![no_main]
-#![feature(lang_items)]
-#![feature(alloc_error_handler)]
-#![feature(panic_info_message)]
+#![cfg_attr(not(test), no_main)]
 
 use ckb_std::{
     ckb_constants::Source, ckb_types::prelude::Entity, debug, default_alloc, error::SysError,

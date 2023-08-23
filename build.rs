@@ -1,12 +1,21 @@
 fn main() {
     println!("cargo:rerun-if-changed=binding.c");
 
+    let clang = match std::env::var_os("CLANG") {
+        Some(val) => val,
+        None => "clang-16".into(),
+    };
+
     cc::Build::new()
         .file("binding.c")
         .static_flag(true)
         .include("deps/ckb-witness-args-handwritten-reader/c")
         .include("deps/ckb-c-stdlib")
         .include("deps/ckb-c-stdlib/libc")
+        .compiler(clang)
+        .no_default_flags(true)
+        .flag("--target=riscv64")
+        .flag("-march=rv64imc_zba_zbb_zbc_zbs")
         .flag("-O3")
         .flag("-fno-builtin-printf")
         .flag("-fno-builtin-memcmp")
@@ -17,6 +26,7 @@ fn main() {
         .flag("-ffunction-sections")
         .flag("-Wall")
         .flag("-Werror")
+        .flag("-Wno-unused-parameter")
         .define("__SHARED_LIBRARY__", None)
         .compile("binding");
 }
