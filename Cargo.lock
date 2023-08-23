@@ -31,7 +31,6 @@ name = "ckb-standalone-types"
 version = "0.1.4"
 source = "git+https://github.com/nervosnetwork/ckb-std?rev=0713d17#0713d172faaadf72fe2cd65fe671f696d4c36bb5"
 dependencies = [
- "blake2b-ref",
  "cfg-if",
  "molecule",
 ]
