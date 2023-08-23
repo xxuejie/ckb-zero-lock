@@ -29,8 +29,9 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 [[package]]
 name = "ckb-standalone-types"
 version = "0.1.4"
-source = "git+https://github.com/nervosnetwork/ckb-std?rev=0713d17#0713d172faaadf72fe2cd65fe671f696d4c36bb5"
+source = "git+https://github.com/nervosnetwork/ckb-std?rev=4d2c5b5#4d2c5b5bc7dc2ce770238f0aa8906f4000f00841"
 dependencies = [
+ "blake2b-ref",
  "cfg-if",
  "molecule",
 ]
@@ -38,7 +39,7 @@ dependencies = [
 [[package]]
 name = "ckb-std"
 version = "0.14.2"
-source = "git+https://github.com/nervosnetwork/ckb-std?rev=0713d17#0713d172faaadf72fe2cd65fe671f696d4c36bb5"
+source = "git+https://github.com/nervosnetwork/ckb-std?rev=4d2c5b5#4d2c5b5bc7dc2ce770238f0aa8906f4000f00841"
 dependencies = [
  "buddy-alloc",
  "cc",
