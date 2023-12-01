@@ -24,6 +24,6 @@ jobs:
     - name: Install riscv64 target
       run: rustup target add riscv64imac-unknown-none-elf
     - name: Build
-      run: cargo build --verbose --release --target=riscv64imac-unknown-none-elf
+      run: RUSTFLAGS="--cfg debug_assertions -C target-feature=+zba,+zbb,+zbc,+zbs -C link-arg=-Tdeps/ckb-stack-reorg-bootloader/ld_interface.ld" cargo build --verbose --release --target=riscv64imac-unknown-none-elf
     - name: Run tests
       run: cd tests; cargo test --verbose
