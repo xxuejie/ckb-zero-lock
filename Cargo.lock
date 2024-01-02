@@ -9,12 +9,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "294d17c72e0ba59fad763caa112368d0672083779cdebbb97164f4bb4c1e339a"
 
 [[package]]
-name = "buddy-alloc"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f0d2da64a6a895d5a7e0724882825d50f83c13396b1b9f1878e19a024bab395"
-
-[[package]]
 name = "cc"
 version = "1.0.79"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -27,23 +21,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "ckb-standalone-types"
-version = "0.1.4"
-source = "git+https://github.com/nervosnetwork/ckb-std?rev=4d2c5b5#4d2c5b5bc7dc2ce770238f0aa8906f4000f00841"
-dependencies = [
- "blake2b-ref",
- "cfg-if",
- "molecule",
-]
-
-[[package]]
 name = "ckb-std"
-version = "0.14.2"
-source = "git+https://github.com/nervosnetwork/ckb-std?rev=4d2c5b5#4d2c5b5bc7dc2ce770238f0aa8906f4000f00841"
+version = "0.14.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a08518aa0fd4ce069d3ec80b63dcd3d6543ad3805ad1c0b4e1d8e4d38f8a9fc"
 dependencies = [
- "buddy-alloc",
  "cc",
- "ckb-standalone-types",
 ]
 
 [[package]]
@@ -61,15 +44,6 @@ name = "merkle-cbt"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "171d2f700835121c3b04ccf0880882987a050fd5c7ae88148abf537d33dd3a56"
-dependencies = [
- "cfg-if",
-]
-
-[[package]]
-name = "molecule"
-version = "0.7.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4fd9767ab5e5f2ea40f71ff4c8bdb633c50509052e093c2fdd0e390a749dfa3"
 dependencies = [
  "cfg-if",
 ]
