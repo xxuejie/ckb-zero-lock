@@ -23,7 +23,10 @@ use std::sync::Arc;
 
 lazy_static! {
     pub static ref ZERO_LOCK_PATH: String = std::env::var("ZERO_LOCK_PATH").unwrap_or_else(|_| {
-        "../target/riscv64imac-unknown-none-elf/release/ckb-zero-lock".to_string()
+        format!(
+            "{}/../target/riscv64imac-unknown-none-elf/release/ckb-zero-lock",
+            env!("CARGO_MANIFEST_DIR"),
+        )
     });
     pub static ref ZERO_LOCK_BIN: Bytes =
         Bytes::from(std::fs::read(&*ZERO_LOCK_PATH).expect("read"));

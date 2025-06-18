@@ -15,23 +15,19 @@ $ cargo build --target=riscv64imac-unknown-none-elf
 For release build, use:
 
 ```
-$ cargo build --target=riscv64imac-unknown-none-elf --release
+$ make build
 ```
 
-For release build with debug logs, use:
+If you are using a different clang version:
 
 ```
-$ RUSTFLAGS="--cfg debug_assertions" cargo build --target=riscv64imac-unknown-none-elf --release
+$ make build CLANG=clang-19
 ```
 
 To run tests, use the following command:
 
 ```
-$ cd tests; cargo test
+$ make test
 ```
 
-By default, the tests use the relase build of the smart contract to run. If you noticed `tests::test_zero_lock_exists` fails, it means the test runner fails to find the default release build binary to use. You can either build the release version of the smart contract, or use the following command to use the debug build:
-
-```
-$ cd tests; ZERO_LOCK_PATH=../target/riscv64imac-unknown-none-elf/debug/ckb-zero-lock cargo test
-```
+For more usages, refer to [ckb-script-templates](https://github.com/cryptape/ckb-script-templates?tab=readme-ov-file#standalone-contract-crate)
