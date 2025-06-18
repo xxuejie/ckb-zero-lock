@@ -18,10 +18,16 @@ For release build, use:
 $ cargo build --target=riscv64imac-unknown-none-elf --release
 ```
 
+If you are using a different clang version:
+
+```
+$ TARGET_CC=clang-19 cargo build --target=riscv64imac-unknown-none-elf --release
+```
+
 For release build with debug logs, use:
 
 ```
-$ RUSTFLAGS="--cfg debug_assertions" cargo build --target=riscv64imac-unknown-none-elf --release
+$ RUSTFLAGS="-C debug_assertions" cargo build --target=riscv64imac-unknown-none-elf --release
 ```
 
 To run tests, use the following command:
