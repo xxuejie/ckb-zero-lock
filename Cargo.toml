@@ -6,7 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ckb-std = "0.17.2"
+# Waiting for https://github.com/nervosnetwork/ckb-std/pull/136 to be released.
+ckb-std = { git = "https://github.com/xxuejie/ckb-std", rev = "348f461" }
 merkle-cbt = { version = "0.3.1", default-features = false }
 blake2b-ref = "0.3.1"
 

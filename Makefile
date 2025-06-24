@@ -82,4 +82,12 @@ CHECKSUM_FILE := build/checksums-$(MODE).txt
 checksum: build
 	shasum -a 256 build/$(MODE)/* > $(CHECKSUM_FILE)
 
-.PHONY: build test check clippy fmt cargo clean prepare
+DOCKER := docker
+DOCKER_IMAGE := docker.io/xxuejie/ckb-script-fuzzing-toolkit:20250625
+DOCKER_RUN_ARGS :=
+
+repl:
+	$(DOCKER) run --rm -it $(DOCKER_RUN_ARGS) -v $(TOP):/code $(DOCKER_IMAGE) || true
+	$(DOCKER) run --rm -it $(DOCKER_RUN_ARGS) -e UID=`id -u` -e GID=`id -g` -v $(TOP):/code $(DOCKER_IMAGE) bash -c 'chown -R -f $$UID:$$GID .'
+
+.PHONY: build test check clippy fmt cargo clean prepare repl
