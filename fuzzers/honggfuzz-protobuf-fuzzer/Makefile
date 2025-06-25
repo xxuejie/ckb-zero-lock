@@ -20,15 +20,16 @@ corpus: $(TX_GENERATOR)
 	rm -rf corpus/*.json corpus/_data*	
 
 fuzz: corpus
-	cargo +nightly fuzz run --jobs $(JOBS) fuzzing_target $(cur_dir)/corpus -- $(FUZZ_ARGS)
+	HFUZZ_INPUT=$(cur_dir)/corpus \
+		HFUZZ_RUN_ARGS="-n $(JOBS) $(FUZZ_ARGS)" \
+		cargo hfuzz run fuzzing-target
 
 prepare:
 	rustup toolchain install nightly
 
 clean:
 	cargo clean
-	cd fuzz; cargo clean
 	rm -rf corpus
-	rm -rf fuzz/artifacts
+	rm -rf hfuzz_target hfuzz_workspace
 
 .PHONY: fuzz prepare clean

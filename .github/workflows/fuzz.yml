@@ -11,10 +11,10 @@ env:
   CARGO_FUZZ_VERSION: 0.12.0
   TARGET_CC: clang
   RUSTFLAGS: "-C debug_assertions"
-  FUZZ_TIME: 900
+  FUZZ_TIME_SECONDS: 900
 
 jobs:
-  build:
+  libfuzzer_protobuf:
 
     runs-on: ubuntu-latest
 
@@ -43,4 +43,115 @@ jobs:
     - name: Fuzz
       run: |
         cd fuzzers/libfuzzer-protobuf-fuzzer && \
-          make fuzz JOBS=`nproc` FUZZ_ARGS="-max_total_time=${{ env.FUZZ_TIME }}"
+          make fuzz JOBS=`nproc` FUZZ_ARGS="-max_total_time=${{ env.FUZZ_TIME_SECONDS }}"
+
+  libfuzzer_fdp:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+    - name: Install llvm
+      run: sudo apt update && sudo apt install -y llvm clang llvm-dev
+    - name: Install nightly Rust
+      run: rustup toolchain install nightly
+    - uses: actions/cache@v4
+      with:
+        path: ${{ runner.tool_cache }}/cargo-fuzz
+        key: cargo-fuzz-bin-${{ env.CARGO_FUZZ_VERSION }}
+    - run: echo "${{ runner.tool_cache }}/cargo-fuzz/bin" >> $GITHUB_PATH
+    - run: cargo install --root "${{ runner.tool_cache }}/cargo-fuzz" --version ${{ env.CARGO_FUZZ_VERSION }} cargo-fuzz --locked
+    - name: Fuzz
+      run: |
+        cd fuzzers/libfuzzer-fdp-fuzzer && \
+          make fuzz JOBS=`nproc` FUZZ_ARGS="-max_total_time=${{ env.FUZZ_TIME_SECONDS }}"
+
+  honggfuzz_protobuf:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+    - name: Install llvm
+      run: sudo apt update && sudo apt install -y llvm clang llvm-dev binutils-dev libunwind-dev protobuf-compiler
+    - name: Install riscv64 target
+      run: rustup target add riscv64imac-unknown-none-elf
+    - name: Install cargo-hfuzz
+      run: cargo install honggfuzz
+    - name: Install ckb-vm-syscall-tracer
+      run: |
+        cargo install \
+          --git https://github.com/xxuejie/ckb-script-fuzzing-toolkit \
+          --rev 479052e565ef872fbf60531a1ce2dcf54e83085a \
+          ckb-vm-syscall-tracer
+    - name: Fuzz
+      run: |
+        cd fuzzers/honggfuzz-protobuf-fuzzer && \
+          make fuzz JOBS=`nproc` FUZZ_ARGS="--run_time ${{ env.FUZZ_TIME_SECONDS }}"
+
+  honggfuzz_fdp:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+    - name: Install llvm
+      run: sudo apt update && sudo apt install -y llvm clang llvm-dev binutils-dev libunwind-dev
+    - name: Install cargo-hfuzz
+      run: cargo install honggfuzz
+    - name: Fuzz
+      run: |
+        cd fuzzers/honggfuzz-fdp-fuzzer && \
+          make fuzz JOBS=`nproc` FUZZ_ARGS="--run_time ${{ env.FUZZ_TIME_SECONDS }}"
+
+  aflxx_protobuf:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+    - name: Install llvm
+      run: sudo apt update && sudo apt install -y llvm clang llvm-dev protobuf-compiler
+    - name: Install riscv64 target
+      run: rustup target add riscv64imac-unknown-none-elf
+    - name: Install cargo-afl
+      run: cargo install cargo-afl
+    - name: Install ckb-vm-syscall-tracer
+      run: |
+        cargo install \
+          --git https://github.com/xxuejie/ckb-script-fuzzing-toolkit \
+          --rev 479052e565ef872fbf60531a1ce2dcf54e83085a \
+          ckb-vm-syscall-tracer
+    - name: AFL config
+      run: echo core | sudo tee /proc/sys/kernel/core_pattern
+    - name: Fuzz
+      run: |
+        cd fuzzers/aflxx-protobuf-fuzzer && \
+          make fuzz FUZZ_ARGS="-V ${{ env.FUZZ_TIME_SECONDS }}"
+
+  aflxx_fdp:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: true
+    - name: Install llvm
+      run: sudo apt update && sudo apt install -y llvm clang llvm-dev
+    - name: Install cargo-afl
+      run: cargo install cargo-afl
+    - name: AFL config
+      run: echo core | sudo tee /proc/sys/kernel/core_pattern
+    - name: Fuzz
+      run: |
+        cd fuzzers/aflxx-fdp-fuzzer && \
+          make fuzz FUZZ_ARGS="-V ${{ env.FUZZ_TIME_SECONDS }}"

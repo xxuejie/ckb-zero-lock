@@ -180,7 +180,7 @@ dependencies = [
 [[package]]
 name = "ckb-vm-fuzzing-utils"
 version = "0.1.0"
-source = "git+https://github.com/xxuejie/ckb-script-fuzzing-toolkit?rev=479052e#479052e565ef872fbf60531a1ce2dcf54e83085a"
+source = "git+https://github.com/xxuejie/ckb-script-fuzzing-toolkit?rev=590590e#590590e55770b519e69044222ac920e8e92ebf39"
 dependencies = [
  "ckb-std",
  "ckb-vm",
@@ -663,7 +663,7 @@ dependencies = [
 [[package]]
 name = "protobuf-ckb-syscalls"
 version = "0.1.0"
-source = "git+https://github.com/xxuejie/ckb-script-fuzzing-toolkit?rev=479052e#479052e565ef872fbf60531a1ce2dcf54e83085a"
+source = "git+https://github.com/xxuejie/ckb-script-fuzzing-toolkit?rev=590590e#590590e55770b519e69044222ac920e8e92ebf39"
 dependencies = [
  "ckb-std",
  "ckb-vm-fuzzing-utils",

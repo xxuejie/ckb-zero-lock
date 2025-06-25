@@ -1,11 +1,12 @@
 [package]
-name = "libfuzzer-protobuf-fuzzer"
+name = "honggfuzz-protobuf-fuzzer"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 ckb-zero-lock = { path = "../.." }
 clap = { version = "4.5.40", features = ["cargo", "derive"] }
+honggfuzz = "0.5"
 
 [dependencies.protobuf-ckb-syscalls]
 git = "https://github.com/xxuejie/ckb-script-fuzzing-toolkit"
@@ -17,3 +18,8 @@ text-format = ["protobuf-ckb-syscalls/text-format"]
 
 [profile.release]
 debug = true
+
+[[bin]]
+name = "fuzzing-target"
+test = false
+bench = false

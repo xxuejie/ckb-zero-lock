@@ -3,7 +3,6 @@ TOP := $(cur_dir)/../..
 TX_GENERATOR := $(TOP)/tests/target/debug/examples/tx_generator
 TRACER := ckb-vm-syscall-tracer
 CORPUS_COUNT := 10
-JOBS := 1
 FUZZ_ARGS :=
 
 $(TX_GENERATOR):
@@ -20,15 +19,17 @@ corpus: $(TX_GENERATOR)
 	rm -rf corpus/*.json corpus/_data*	
 
 fuzz: corpus
-	cargo +nightly fuzz run --jobs $(JOBS) fuzzing_target $(cur_dir)/corpus -- $(FUZZ_ARGS)
+	cargo afl build
+	mkdir -p corpus_out
+	cargo afl fuzz $(FUZZ_ARGS) \
+		-i $(cur_dir)/corpus -o $(cur_dir)/corpus_out \
+		target/debug/fuzzing-target
 
 prepare:
 	rustup toolchain install nightly
 
 clean:
 	cargo clean
-	cd fuzz; cargo clean
-	rm -rf corpus
-	rm -rf fuzz/artifacts
+	rm -rf corpus corpus_out
 
 .PHONY: fuzz prepare clean

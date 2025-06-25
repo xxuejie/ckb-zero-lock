@@ -1,0 +1,20 @@
+[package]
+name = "honggfuzz-fdp-fuzzer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ckb-zero-lock = { path = "../.." }
+honggfuzz = "0.5"
+
+[dependencies.fdp-ckb-syscalls]
+git = "https://github.com/xxuejie/ckb-script-fuzzing-toolkit"
+rev = "590590e"
+
+[profile.release]
+debug = true
+
+[[bin]]
+name = "fuzzing-target"
+test = false
+bench = false
