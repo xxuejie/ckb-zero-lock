@@ -114,7 +114,7 @@ impl ProofVisitor {
                         t.copy_from_slice(&data[0..4]);
                         self.buffer.consume(4);
                         self.total = u32::from_le_bytes(t) as usize;
-                        self.indices = Vec::with_capacity(self.total as usize);
+                        self.lemmas = Vec::with_capacity(self.buffer.data().len());
                         self.state = ReadState::Indices;
                         changed = true;
                     }
@@ -137,7 +137,7 @@ impl ProofVisitor {
                         t.copy_from_slice(&data[0..4]);
                         self.buffer.consume(4);
                         self.total = u32::from_le_bytes(t) as usize;
-                        self.lemmas = Vec::with_capacity(self.total as usize);
+                        self.lemmas = Vec::with_capacity(self.buffer.data().len());
                         self.state = ReadState::Lemmas;
                         changed = true;
                     }
