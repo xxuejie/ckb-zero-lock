@@ -4,6 +4,7 @@ TX_GENERATOR := $(TOP)/tests/target/debug/examples/tx_generator
 TRACER := ckb-vm-syscall-tracer
 CORPUS_COUNT := 10
 JOBS := 1
+FUZZ_ARGS :=
 
 $(TX_GENERATOR):
 	make -C $(TOP) build
@@ -19,7 +20,7 @@ corpus: $(TX_GENERATOR)
 	rm -rf corpus/*.json corpus/_data*	
 
 fuzz: corpus
-	cargo +nightly fuzz run --jobs $(JOBS) fuzzing_target $(cur_dir)/corpus --
+	cargo +nightly fuzz run --jobs $(JOBS) fuzzing_target $(cur_dir)/corpus -- $(FUZZ_ARGS)
 
 prepare:
 	rustup toolchain install nightly
