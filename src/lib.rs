@@ -149,11 +149,15 @@ pub fn run() -> Result<(), SysError> {
     // * Index of header to load merkle root
     // * Merkle proof
     // * Remainder of witness data (input_type, output_type) so we can ensure non-malleability
-    let (proof_visitor, hasher) = witness_reader::read_witness(0, Source::GroupInput, hasher)
-        .expect("parsing witness failure!");
-    let (header_index, merkle_proof) = proof_visitor
-        .build::<Blake2bHash>()
-        .expect("parsing merkle proof failure!");
+    let Some((proof_visitor, hasher)) = witness_reader::read_witness(0, Source::GroupInput, hasher)
+    else {
+        debug!("parsing witness failure!");
+        return Err(SysError::Unknown(9));
+    };
+    let Some((header_index, merkle_proof)) = proof_visitor.build::<Blake2bHash>() else {
+        debug!("parsing merkle proof failure!");
+        return Err(SysError::Unknown(10));
+    };
 
     // Now we have all the data for the hasher, we can build the actual merkle leaf.
     let mut leaf = [0u8; 32];
@@ -184,7 +188,10 @@ pub fn run() -> Result<(), SysError> {
     let merkle_root = Data::new(merkle_root);
 
     // Actual merkle proof verification
-    let actual_root = merkle_proof.root(&[leaf]).expect("no root");
+    let Some(actual_root) = merkle_proof.root(&[leaf]) else {
+        debug!("no root");
+        return Err(SysError::Unknown(11));
+    };
     if actual_root != merkle_root {
         debug!(
             "Merkle proof failure! Actual root: {:?}, expected root: {:?}",
